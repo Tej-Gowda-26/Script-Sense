@@ -1,0 +1,29 @@
+# ScriptSense – Backend Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Django core
+Django>=5.1.4
+
+# CORS support
+django-cors-headers>=4.3.1
+
+# Environment variables
+python-dotenv>=1.0.1
+
+# MongoDB driver
+pymongo>=4.6.1
+
+# Groq AI SDK
+groq>=0.7.0
+
+# HTTP requests (used in Evaluate, imgtotext, ragpipe)
+requests>=2.31.0
+
+# Password hashing
+bcrypt>=4.1.2
+
+# RAG / embedding pipeline
+sentence-transformers>=2.6.1
+faiss-cpu>=1.8.0
+numpy>=1.26.4
+PyPDF2>=3.0.1
