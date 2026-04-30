@@ -13,10 +13,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Load embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")

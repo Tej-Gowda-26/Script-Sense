@@ -1,16 +1,12 @@
 import base64
-import os
 import re
-from dotenv import load_dotenv
 from groq import Groq
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-load_dotenv()
-os.environ['GROQ_API_KEY']=settings.GROQ_API_KEY
-client = Groq()
+client = Groq(api_key=settings.GROQ_API_KEY)
 
 # Utility to encode image to base64
 def encode_image(image_file):

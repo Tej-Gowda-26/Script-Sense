@@ -1,6 +1,3 @@
-from django.shortcuts import render
-
-# Create your views here.
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
@@ -12,10 +9,9 @@ import bcrypt
 
 # MongoDB client – URI loaded from settings (which reads from .env)
 client = MongoClient(settings.MONGO_URI)
-
-# MongoDB setup
 db = client['ScriptSense']
 collection = db['students']
+login_collection = db['Login']
 
 # Validate USN format
 def validate_usn(usn):
@@ -23,9 +19,6 @@ def validate_usn(usn):
 
 @csrf_exempt
 def login(request):
-    login_client = MongoClient(settings.MONGO_URI)
-    login_db = login_client['ScriptSense']
-    collection = login_db['Login']
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST allowed'}, status=405)
 
@@ -43,7 +36,7 @@ def login(request):
         return JsonResponse({'error': 'Invalid USN format'}, status=400)
 
     # Find user and include password hash
-    student = collection.find_one({"usn": usn}, {"_id": 0, "password": 1})
+    student = login_collection.find_one({"usn": usn}, {"_id": 0, "password": 1})
     if not student:
         return JsonResponse({'error': 'User not found'}, status=404)
 
@@ -58,9 +51,6 @@ def login(request):
 
 @csrf_exempt
 def signup(request):
-    signup_client = MongoClient(settings.MONGO_URI)
-    signup_db = signup_client['ScriptSense']
-    collection = signup_db['Login']
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST allowed'}, status=405)
 
@@ -71,22 +61,18 @@ def signup(request):
     except (json.JSONDecodeError, KeyError):
         return JsonResponse({'error': 'Invalid request format'}, status=400)
 
-    # Basic validation
     if not usn or not password:
         return JsonResponse({'error': 'USN and password are required'}, status=400)
 
     if not validate_usn(usn):
         return JsonResponse({'error': 'Invalid USN format'}, status=400)
 
-    # Check if user already exists
-    if collection.find_one({"usn": usn}):
+    if login_collection.find_one({"usn": usn}):
         return JsonResponse({'error': 'USN already registered'}, status=409)
 
-    # Hash the password
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    # Insert into MongoDB
-    collection.insert_one({
+    login_collection.insert_one({
         "usn": usn,
         "password": hashed_password
     })
@@ -113,13 +99,8 @@ def get_registered_subjects(request):
 
         if not validate_usn(usn):
             return JsonResponse({'error': 'Invalid USN format'}, status=400)
-        
-        # Connect to MongoDB
-        sub_client = MongoClient(settings.MONGO_URI)
-        sub_db = sub_client['ScriptSense']
-        collection = sub_db['students']
-        
-        # Find all records for this student
+
+        # Find all records for this student using module-level collection
         student_records = list(collection.find({"usn": usn}))
         print(f"Found {len(student_records)} records for USN: {usn}")
         

@@ -175,7 +175,7 @@ const UploadAnswerPage = () => {
           minFiles={1}
           acceptedTypes="image/*"
           files={images}
-        />/
+        />
 
 
         {error && <p className="mt-4 p-3 bg-red-100 text-red-700 rounded">{error}</p>}
