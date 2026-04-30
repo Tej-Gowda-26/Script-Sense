@@ -57,8 +57,3 @@ echo ============================================
 echo   All dependencies installed successfully!
 echo ============================================
 echo.
-echo Next steps:
-echo   1. Edit .env and set your GROQ_API_KEY
-echo   2. Run: start_servers.bat
-echo.
-pause
