@@ -126,25 +126,47 @@ Important:
 - If unsure about diagram, prefer false.
 - Do NOT infer diagrams unless wording clearly asks for one.
 
-Output format examples:
+Output format examples — ALL common exam paper formats:
 
-Example 1 — paper with true subquestions:
+Example 1 — all plain questions (no subquestions anywhere):
 {
-  "1":  { "question": "Define Virtual Reality and list three features.", "marks": 5, "requires_diagram": false },
-  "2a": { "question": "Illustrate the difference between 3-DoF and 6-DoF tracking systems.", "marks": 6, "requires_diagram": false },
-  "2b": { "question": "Explain any two major applications of VR.", "marks": 4, "requires_diagram": false },
-  "3a": { "question": "Differentiate OST and VST with a neat sketch.", "marks": 5, "requires_diagram": true }
+  "1": { "question": "<full text of question 1>", "marks": 10, "requires_diagram": false },
+  "2": { "question": "<full text of question 2, which may include inline items like i) ... ii) ... iii) ...>", "marks": 10, "requires_diagram": false },
+  "3": { "question": "<full text of question 3 — asks to draw/sketch something>", "marks": 10, "requires_diagram": true },
+  "4": { "question": "<full text of question 4>", "marks": 10, "requires_diagram": false },
+  "5": { "question": "<full text of question 5>", "marks": 10, "requires_diagram": false }
 }
 
-Example 2 — paper with no subquestions (inline bullets are NOT subquestions):
+Example 2 — all questions have true subparts (each subpart is a separate row with its own marks):
 {
-  "1": { "question": "Compare VR and MR systems highlighting key differences.", "marks": 10, "requires_diagram": false },
-  "2": { "question": "Explain the following terms: i) Visual Field ii) Field of View iii) Frame Update Rate iv) Latency v) Brightness and Luminance", "marks": 10, "requires_diagram": false },
-  "3": { "question": "Differentiate OST and VST display systems with neat sketch.", "marks": 10, "requires_diagram": true }
+  "1a": { "question": "<full text of subpart 1a>", "marks": 6, "requires_diagram": false },
+  "1b": { "question": "<full text of subpart 1b — asks to draw/sketch>", "marks": 4, "requires_diagram": true },
+  "2a": { "question": "<full text of subpart 2a>", "marks": 5, "requires_diagram": false },
+  "2b": { "question": "<full text of subpart 2b>", "marks": 5, "requires_diagram": false },
+  "3a": { "question": "<full text of subpart 3a>", "marks": 7, "requires_diagram": false },
+  "3b": { "question": "<full text of subpart 3b — asks to draw/sketch>", "marks": 3, "requires_diagram": true }
 }
+
+Example 3 — MIXED paper (most common): some questions are plain, some have true subparts:
+{
+  "1":  { "question": "<full text of plain question 1 — one row, one mark value>", "marks": 5, "requires_diagram": false },
+  "2a": { "question": "<full text of subpart 2a — Q2 has two separate rows with separate marks>", "marks": 6, "requires_diagram": false },
+  "2b": { "question": "<full text of subpart 2b>", "marks": 4, "requires_diagram": false },
+  "3":  { "question": "<full text of plain question 3, which internally lists items like (a) ... (b) ... (c) ... but is ONE row with ONE mark>", "marks": 10, "requires_diagram": false },
+  "4a": { "question": "<full text of subpart 4a>", "marks": 5, "requires_diagram": true },
+  "4b": { "question": "<full text of subpart 4b>", "marks": 5, "requires_diagram": false },
+  "5":  { "question": "<full text of plain question 5>", "marks": 10, "requires_diagram": false }
+}
+
+Edge cases to remember:
+- Subpart labels in the Q.No. column can appear as: a., b., (a), (b), A, B — all are true subquestions if they have their own mark.
+- Inline enumeration styles that are NOT subquestions: i), ii), iii) / a), b), c) / 1., 2., 3. appearing INSIDE the question text body.
+- A question that says "Explain/List the following: i) X ii) Y iii) Z" is ONE question. Do NOT split it.
+- Only create "2a", "2b" keys when the paper's Q.No. column ITSELF shows separate labeled rows for that question.
 
 Return ONLY the raw JSON object, no markdown, no extra text.
       `;
+
 
       const payload = {
         model: GROQ_MODEL,
