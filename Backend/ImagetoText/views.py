@@ -10,6 +10,20 @@ from groq import Groq
 from pymongo import MongoClient
 import json
 
+# RAG utility — imported directly to avoid an extra HTTP round-trip
+try:
+    from RagPipe.views import get_rag_context
+except Exception:
+    def get_rag_context(*args, **kwargs):
+        return ""
+
+# Grading function — imported directly to avoid self-HTTP deadlock
+try:
+    from Evaluate.views import grade_questions
+except Exception:
+    def grade_questions(questions, default_total=None):
+        return []
+
 # Setup logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -164,11 +178,15 @@ def process_exam_images(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
 
-    exam_type = request.POST.get('exam_type')
-    subject = request.POST.get('subject')
+    exam_type   = request.POST.get('exam_type')
+    subject     = request.POST.get('subject')
     image_files = request.FILES.getlist('images')
-    total = request.POST.get('total')
-    usn = request.POST.get('usn')
+    total       = request.POST.get('total')
+    usn         = request.POST.get('usn')
+    # Optional RAG index paths — teacher frontend can pass these after /rag/pipeline/
+    index_file  = request.POST.get('index_file', '').strip()
+    meta_file   = request.POST.get('meta_file', '').strip()
+    use_rag     = bool(index_file and meta_file)
 
     if not exam_type or not subject:
         return JsonResponse({'error': 'Missing exam_type or subject'}, status=400)
@@ -185,7 +203,25 @@ def process_exam_images(request):
         logger.info(f"Extracted text length: {len(extracted_text)} characters")
         
         refined_payload = parse_and_add_questions(extracted_text, subject, exam_type)
-        
+
+        # --- Optional: inject RAG context per question ---
+        if use_rag:
+            logger.info(f"RAG enabled — querying index '{index_file}' for {len(refined_payload)} questions")
+            for q in refined_payload:
+                ctx = get_rag_context(
+                    query=q.get('question', ''),
+                    index_file=index_file,
+                    meta_file=meta_file,
+                    top_k=3
+                )
+                q['retrieved_context'] = ctx
+                if ctx:
+                    logger.info(f"  Q{q.get('qno')}: RAG context found ({len(ctx)} chars)")
+                else:
+                    logger.info(f"  Q{q.get('qno')}: no RAG context retrieved")
+        else:
+            logger.info("RAG not enabled for this submission (no index_file/meta_file provided)")
+
         payload = {
             'exam_type': exam_type,
             'subject': subject,
@@ -193,69 +229,88 @@ def process_exam_images(request):
             'questions': refined_payload
         }
         
-        logger.info(f"Payload prepared for forwarding: {payload}")
+        logger.info(f"Payload prepared: {len(refined_payload)} questions, RAG={'yes' if use_rag else 'no'}")
 
-        status_code, response_text = trigger_another_app(payload)
-
-        if status_code != 200:
-            logger.error(f"Failed to notify other app, status: {status_code}, details: {response_text}")
-            return JsonResponse({'error': 'Failed to notify other app', 'details': response_text}, status=status_code)
-
-        logger.info("Processing and forwarding successful.")
-        logger.info(f"Response text: {response_text}")
-
-        # Parse the response from the first app (assuming it's JSON)
-        try:
-            response_data = json.loads(response_text)
-            logger.info(f"Parsed response data: {response_data}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse response as JSON: {e}")
-            response_data = {"results": []}
+        # --- Call grading directly (no HTTP) to avoid self-call deadlock ---
+        logger.info("Calling grade_questions() directly...")
+        grading_results = grade_questions(refined_payload, default_total=total)
+        response_data   = {'results': grading_results}
+        response_text   = json.dumps(response_data)
+        logger.info(f"Grading complete: {len(grading_results)} results")
         
-        # Format feedback in the expected structure
+        # Format feedback — forward ALL fields from Evaluate (core + extended)
         feedback_list = []
-        
-        # Check if we have the refined_payload and response_data to work with
+
         if isinstance(response_data, dict) and "results" in response_data:
             results = response_data.get("results", [])
-            
+
             for idx, result in enumerate(results):
                 if not isinstance(result, dict):
                     continue
-                
-                # Find corresponding question from refined_payload if possible
-                question_data = None
+
+                # Error results get a zero-score placeholder so no question is silently dropped
+                if "error" in result and "score" not in result:
+                    logger.warning(f"Error result at index {idx}: {result.get('error')} — inserting zero-score placeholder")
+                    question_data = next((q for q in refined_payload if q.get("qno") == idx + 1), None)
+                    feedback_list.append({
+                        "index":   idx,
+                        "qno":     idx + 1,
+                        "question": question_data.get("question", f"Question {idx + 1}") if question_data else f"Question {idx + 1}",
+                        "answer":   "",
+                        "feedback": f"Grading failed for this question ({result.get('error', 'unknown error')}). Please review manually.",
+                        "score":    0,
+                        "total":    int(total) if total else 0,
+                        "correctness_assessment": "", "completeness_assessment": "",
+                        "relevance_assessment":   "", "depth_assessment": "",
+                        "correct_points_found":   [], "missing_points": [], "incorrect_points": [],
+                        "partial_credit_reasoning": "",
+                        "confidence": "low", "used_rag_reference": False,
+                    })
+                    continue
+
                 qno = result.get("qno", idx + 1)
-                
-                for q in refined_payload:
-                    if q.get("qno") == qno:
-                        question_data = q
-                        break
-                
-                # Get answer from question_data if available
-                answer = ""
-                if question_data and "answer" in question_data:
-                    if isinstance(question_data["answer"], list):
-                        answer = " ".join(question_data["answer"])
-                    else:
-                        answer = str(question_data["answer"])
-                
-                # Get question text
+
+                # Resolve question_data from refined_payload for fallback values
+                question_data = next(
+                    (q for q in refined_payload if q.get("qno") == qno), None
+                )
+
+                # Resolve answer string
+                answer_str = result.get("answer", "")
+                if not answer_str and question_data:
+                    raw = question_data.get("answer", "")
+                    answer_str = " ".join(raw) if isinstance(raw, list) else str(raw)
+
+                # Resolve question text
                 question_text = result.get("question", "")
                 if not question_text and question_data:
                     question_text = question_data.get("question", f"Question {qno}")
-                
-                # Create feedback item with all required fields
+
+                # Resolve total marks
+                q_total = result.get("total") or total
+
+                # --- Build feedback item: core fields + all extended assessment fields ---
                 feedback_item = {
                     "index": idx,
-                    "qno": qno,
+                    "qno":   qno,
                     "question": question_text,
-                    "answer": result.get("answer", answer),  # Use answer from result or from question_data
+                    "answer":   answer_str,
                     "feedback": result.get("feedback", ""),
-                    "score": float(result.get("score", 0)),  # Convert to float to handle decimal scores
-                    "total": int(result.get("total", total) if result.get("total") else total)  # Use question total or overall total
+                    "score":    float(result.get("score", 0)),
+                    "total":    int(q_total) if q_total else 0,
+                    # Extended assessment fields from the new grading engine
+                    "correctness_assessment":   result.get("correctness_assessment", ""),
+                    "completeness_assessment":  result.get("completeness_assessment", ""),
+                    "relevance_assessment":     result.get("relevance_assessment", ""),
+                    "depth_assessment":         result.get("depth_assessment", ""),
+                    "correct_points_found":     result.get("correct_points_found", []),
+                    "missing_points":           result.get("missing_points", []),
+                    "incorrect_points":         result.get("incorrect_points", []),
+                    "partial_credit_reasoning": result.get("partial_credit_reasoning", ""),
+                    "confidence":               result.get("confidence", ""),
+                    "used_rag_reference":       result.get("used_rag_reference", False),
                 }
-                
+
                 feedback_list.append(feedback_item)
         
         logger.info(f"Generated feedback list: {feedback_list}")
@@ -278,7 +333,12 @@ def process_exam_images(request):
         
         logger.info(f"Student log: {student_log}")
 
-        return JsonResponse({'message': 'Processing successful', 'forwarded_response': response_text})
+        # Return the cleaned feedback_list (not raw grading output) so the
+        # teacher frontend never receives error/skipped records with missing fields
+        return JsonResponse({
+            'message':           'Processing successful',
+            'forwarded_response': json.dumps({'results': feedback_list}),
+        })
 
     except Exception as e:
         logger.exception(f"Unexpected error during processing: {e}")

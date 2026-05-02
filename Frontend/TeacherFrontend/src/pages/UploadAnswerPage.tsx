@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
 import FileUpload from '../components/FileUpload';
 import ResultItem from '../components/ResultCard';
@@ -14,19 +15,28 @@ type ServerResponse = {
 };
 
 const UploadAnswerPage = () => {
-  const [subject, setSubject] = useState('');
-  const [examType, setExamType] = useState('');
-  const [usn, setUsn] = useState('');
-  const [images, setImages] = useState<File[]>([]);
+  const navigate = useNavigate();
+  const [subject, setSubject]       = useState('');
+  const [examType, setExamType]     = useState('');
+  const [usn, setUsn]               = useState('');
+  const [images, setImages]         = useState<File[]>([]);
 
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  // RAG artifacts — set once via the textbook upload on UploadQuestionPage
+  const [ragIndexFile, setRagIndexFile] = useState('');
+  const [ragMetaFile,  setRagMetaFile]  = useState('');
+  const [ragName,      setRagName]      = useState('');
+
+  const [error, setError]               = useState('');
+  const [loading, setLoading]           = useState(false);
   const [responseData, setResponseData] = useState<ServerResponse | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
-    setSubject(localStorage.getItem('subject') || '');
+    setSubject(localStorage.getItem('subject')   || '');
     setExamType(localStorage.getItem('examType') || '');
+    setRagIndexFile(localStorage.getItem('rag_index_file') || '');
+    setRagMetaFile(localStorage.getItem('rag_meta_file')   || '');
+    setRagName(localStorage.getItem('rag_indexed_name')    || '');
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,10 +53,16 @@ const UploadAnswerPage = () => {
 
     try {
       const formData = new FormData();
-      formData.append('subject', subject);
+      formData.append('subject',   subject);
       formData.append('exam_type', examType);
-      formData.append('total', '10');
-      formData.append('usn', usn);
+      formData.append('total',     '10');
+      formData.append('usn',       usn);
+
+      // Forward RAG artifacts if available so the backend uses them for grading
+      if (ragIndexFile && ragMetaFile) {
+        formData.append('index_file', ragIndexFile);
+        formData.append('meta_file',  ragMetaFile);
+      }
 
       images.forEach(file => formData.append('images', file));
 
@@ -82,8 +98,9 @@ const UploadAnswerPage = () => {
     if (!responseData?.results) return null;
 
     const results = responseData.results;
-    const totalScored = results.reduce((sum, r) => sum + r.score, 0);
-    const scorePercentage = (totalScored / (results.length * 10)) * 100;
+    const totalScored    = results.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
+    const totalPossible  = results.reduce((sum, r) => sum + (Number(r.maxScore ?? 10) || 10), 0);
+    const scorePercentage = totalPossible > 0 ? (totalScored / totalPossible) * 100 : 0;
 
     return (
       <div className="mt-10">
@@ -114,7 +131,7 @@ const UploadAnswerPage = () => {
           </div>
           <div className="flex justify-between">
             <p>Total Questions: <strong>{results.length}</strong></p>
-            <p className="text-xl font-bold">{totalScored} / {results.length * 10}</p>
+            <p className="text-xl font-bold">{totalScored.toFixed(1)} / {totalPossible}</p>
           </div>
         </div>
       </div>
@@ -180,10 +197,22 @@ const UploadAnswerPage = () => {
 
         {error && <p className="mt-4 p-3 bg-red-100 text-red-700 rounded">{error}</p>}
 
-        <div className="mt-6">
-          <Button type="submit" disabled={loading || !subject || !examType || !usn || images.length === 0} isLoading={loading} fullWidth>
-            {loading ? 'Processing...' : 'Submit for Evaluation'}
-          </Button>
+        <div className="mt-6 flex items-stretch gap-3">
+          <div className="flex-[3]">
+            <Button type="submit" disabled={loading || !subject || !examType || !usn || images.length === 0} isLoading={loading} fullWidth>
+              {loading ? 'Processing...' : 'Submit for Evaluation'}
+            </Button>
+          </div>
+          {ragName && (
+            <button
+              type="button"
+              onClick={() => navigate('/upload_textbook')}
+              title={`RAG active: ${ragName} — click to change`}
+              className="flex-[1] flex items-center justify-center text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+            >
+              RAG active
+            </button>
+          )}
         </div>
       </form>
 

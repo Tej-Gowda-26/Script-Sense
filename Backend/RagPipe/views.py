@@ -8,14 +8,56 @@ import json
 from io import BytesIO
 from urllib.parse import urlparse, unquote
 
-from django.http import JsonResponse
+from django.http import JsonResponse, FileResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.views.decorators.clickjacking import xframe_options_exempt
 
 from sentence_transformers import SentenceTransformer
 
 # Load embedding model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Directory where all textbook artifacts (PDF, FAISS index, metadata) are stored
+TEXTBOOKS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Textbooks")
+os.makedirs(TEXTBOOKS_DIR, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Public utility — importable by other Django apps (no HTTP round-trip)
+# ---------------------------------------------------------------------------
+def get_rag_context(query: str, index_file: str, meta_file: str, top_k: int = 3) -> str:
+    """Retrieve top-k relevant text chunks from a FAISS index for *query*.
+
+    Returns a single string (chunks separated by '---') suitable for injection
+    into a grading prompt.  Returns an empty string on any failure so callers
+    can treat RAG as fully optional.
+    """
+    try:
+        if not query or not os.path.exists(index_file) or not os.path.exists(meta_file):
+            return ""
+
+        idx = faiss.read_index(index_file)
+        with open(meta_file, "rb") as f:
+            meta = pickle.load(f)
+
+        pages = meta.get("pages", [])
+        if not pages:
+            return ""
+
+        q_emb = embedding_model.encode([query])
+        q_emb = np.array(q_emb).astype("float32")
+
+        D, I = idx.search(q_emb, top_k)
+
+        chunks = [
+            pages[i]["text"]
+            for i in I[0]
+            if i != -1 and i < len(pages) and pages[i].get("text", "").strip()
+        ]
+        return "\n\n---\n\n".join(chunks)
+    except Exception:
+        return ""
 
 # Utility to extract base filename
 def get_filename_from_path_or_url(path_or_url):
@@ -77,18 +119,30 @@ def ragify_pdf_view(request):
             response = requests.get(pdf_url)
             response.raise_for_status()
             pdf_stream = BytesIO(response.content)
-            base_name = get_filename_from_path_or_url(pdf_url)
+            base_name = os.path.join(TEXTBOOKS_DIR, get_filename_from_path_or_url(pdf_url))
         else:
             pdf_stream = pdf_file.file
-            base_name = os.path.splitext(pdf_file.name)[0]
+            base_name = os.path.join(TEXTBOOKS_DIR, os.path.splitext(pdf_file.name)[0])
 
         pages = load_pdf_from_stream(pdf_stream)
         index_path, meta_path = embed_pages_and_save(pages, base_name)
 
+        # Save original PDF so it can be served back for viewing
+        pdf_save_path = f"{base_name}.pdf"
+        if pdf_url:
+            with open(pdf_save_path, 'wb') as f:
+                f.write(requests.get(pdf_url).content)
+        else:
+            # Re-read from the uploaded file object (stream already consumed above)
+            pdf_file.file.seek(0)
+            with open(pdf_save_path, 'wb') as f:
+                f.write(pdf_file.file.read())
+
         return JsonResponse({
-            "status": "success",
+            "status":     "success",
             "index_file": index_path,
-            "meta_file": meta_path
+            "meta_file":  meta_path,
+            "pdf_file":   pdf_save_path,
         })
 
     except Exception as e:
@@ -141,3 +195,28 @@ def similarity_search_view(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+# View: Serve saved PDF for inline viewing
+@csrf_exempt
+@xframe_options_exempt
+def serve_pdf_view(request):
+    pdf_path = request.GET.get('pdf_file', '').strip()
+
+    if not pdf_path:
+        raise Http404("No pdf_file parameter provided.")
+
+    # Basic path traversal guard
+    pdf_path = os.path.normpath(pdf_path)
+    if '..' in pdf_path:
+        raise Http404("Invalid path.")
+
+    if not os.path.exists(pdf_path):
+        raise Http404(f"PDF not found: {pdf_path}")
+
+    if not pdf_path.lower().endswith('.pdf'):
+        raise Http404("Only PDF files are served by this endpoint.")
+
+    response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{os.path.basename(pdf_path)}"'
+    return response

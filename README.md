@@ -34,13 +34,13 @@ VITE_GROQ_API_KEY=gsk_your_actual_key_here
 ### 3. Install all dependencies
 
 ```bash
-setup.bat
+./setup.bat
 ```
 
 ### 4. Start all servers
 
 ```bash
-start_servers.bat
+./start_servers.bat
 ```
 
 | Service | URL |

@@ -28,6 +28,14 @@ const Header = () => {
                   Upload Answers
                 </Link>
               </li>
+              <li>
+                <Link 
+                  to="/upload_textbook" 
+                  className="text-white/90 transition-colors hover:text-white"
+                >
+                  Upload Textbook
+                </Link>
+              </li>
             </ul>
           </nav>
         </div>

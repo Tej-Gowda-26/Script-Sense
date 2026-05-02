@@ -26,6 +26,9 @@ env/
 *.faiss
 *.pkl
 
+# ── Uploaded textbooks (PDFs stored locally, not committed) ──────────────────
+Backend/Textbooks/
+
 # ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
 dist/

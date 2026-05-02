@@ -210,17 +210,33 @@ def add_or_get_feedback_marks(request):
             subject = data['subject']
             exam_type = data['exam_type']  # e.g., 'CIE' or 'SEE'
             
-            # Get feedbacks from 'feedbacks' or 'results'
+            # Get feedbacks from 'feedback' key — guard against missing/null value
             feedbacks_raw = data.get('feedback')
+            if feedbacks_raw is None:
+                return JsonResponse({'error': "'feedback' key is required in the request body"}, status=400)
+            if not isinstance(feedbacks_raw, list):
+                return JsonResponse({'error': "'feedback' must be a list"}, status=400)
+
 # Only keep items that have 'question' and 'feedback'
             feedbacks = [
                 {
-                    'qno': item.get('index', 0) + 1,
+                    'qno':   item.get('qno', item.get('index', 0) + 1),
                     'question': item['question'],
-                    'answer': item['answer'],
-                    'feedback': item['feedback'],
-                    'score': item.get('score', 0) ,
-                    'total': int(item.get('total', 0))
+                    'answer':   item.get('answer', ''),
+                    'feedback': item.get('feedback', ''),
+                    'score':    item.get('score', 0),
+                    'total':    int(item.get('total', 0)),
+                    # --- Extended assessment fields (new grading engine) ---
+                    'correctness_assessment':   item.get('correctness_assessment', ''),
+                    'completeness_assessment':  item.get('completeness_assessment', ''),
+                    'relevance_assessment':     item.get('relevance_assessment', ''),
+                    'depth_assessment':         item.get('depth_assessment', ''),
+                    'correct_points_found':     item.get('correct_points_found', []),
+                    'missing_points':           item.get('missing_points', []),
+                    'incorrect_points':         item.get('incorrect_points', []),
+                    'partial_credit_reasoning': item.get('partial_credit_reasoning', ''),
+                    'confidence':               item.get('confidence', ''),
+                    'used_rag_reference':       item.get('used_rag_reference', False),
                 }
                 for item in feedbacks_raw
                 if 'question' in item and 'feedback' in item
