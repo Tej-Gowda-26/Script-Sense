@@ -4,9 +4,32 @@ import { CheckCircle } from 'lucide-react';
 import Button from '../components/Button';
 import QuestionItem from '../components/QuestionItem';
 
-type ExtractedQuestions = Record<string, string>;
+type ExtractedQuestion = { question: string; marks: number };
+type ExtractedQuestions = Record<string, ExtractedQuestion>;
 type DiagramRequirement = Record<string, boolean>;
 type DiagramImages = Record<string, File | null>;
+
+/** Extracts the first balanced JSON object from a string, even when
+ *  the LLM adds explanatory text or markdown fences around it. */
+function extractFirstJSON(text: string): any {
+  const start = text.indexOf('{');
+  if (start === -1) throw new Error('No JSON object found in model response');
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escape)          { escape = false; continue; }
+    if (c === '\\' && inString) { escape = true;  continue; }
+    if (c === '"')       { inString = !inString; continue; }
+    if (inString)        continue;
+    if (c === '{')       depth++;
+    else if (c === '}')  { depth--; if (depth === 0) return JSON.parse(text.slice(start, i + 1)); }
+  }
+  throw new Error('Unbalanced braces — could not extract JSON from model response');
+}
 
 const UploadQuestionPage = () => {
   const navigate = useNavigate();
@@ -65,8 +88,15 @@ const UploadQuestionPage = () => {
       const prompt = `
         You are an expert in extracting questions from question papers.
         Please extract ${numQuestions} questions from the following image of a ${subjectName} ${examType} paper.
-        Return the result as a JSON object where the keys are question numbers and values are the question text.
-        For questions that mention diagrams or appear to require diagrams, please add "(requires diagram)" at the end.
+        Return the result as a JSON object where each key is a question number and the value is an object with:
+          - "question": the full question text (exactly as written, including any sub-parts like a, b, i, ii)
+          - "marks": the integer mark/score allocated to that question (found in the Marks column)
+        DIAGRAM RULE: Add "(requires diagram)" at the end of the question text ONLY if the question
+        explicitly uses one of these exact phrases: "draw", "sketch", "neat diagram", "neat sketch",
+        "with a diagram", "with diagram", "show with a figure", "label the diagram".
+        Do NOT add "(requires diagram)" for words like "illustrate", "explain", "describe",
+        "compare", "differentiate", "discuss" — these are writing instructions, not drawing requests.
+        Example: { "1": { "question": "Explain VR systems.", "marks": 10 }, "2": { "question": "Draw the OST display setup. (requires diagram)", "marks": 6 } }
       `;
 
       const payload = {
@@ -98,19 +128,25 @@ const UploadQuestionPage = () => {
       const data = await response.json();
       const assistantMessage = data.choices?.[0]?.message?.content;
 
-      const match = assistantMessage.match(/\{[\s\S]*\}/);
-      const questionsJson = match ? JSON.parse(match[0]) : {};
+      // Use balanced-brace extractor so trailing text/markdown from the LLM never breaks parsing
+      const questionsJson = extractFirstJSON(assistantMessage);
 
       if (!Object.keys(questionsJson).length) throw new Error('No questions extracted');
 
       const requiresDiagram: DiagramRequirement = {};
       const processedQuestions: ExtractedQuestions = {};
 
-      Object.entries(questionsJson).forEach(([qNum, qText]) => {
-        const text = String(qText);
+      Object.entries(questionsJson).forEach(([qNum, val]) => {
+        // Support both old string format and new {question, marks} object format
+        const raw = typeof val === 'string' ? val : (val as any).question || '';
+        const marks = typeof val === 'object' && (val as any).marks ? Number((val as any).marks) : 10;
+        const text = String(raw);
         const needsDiagram = text.toLowerCase().includes('(requires diagram)');
         requiresDiagram[qNum] = needsDiagram;
-        processedQuestions[qNum] = text.replace('(requires diagram)', '').trim();
+        processedQuestions[qNum] = {
+          question: text.replace('(requires diagram)', '').trim(),
+          marks,
+        };
       });
 
       const diagramInit: DiagramImages = {};
@@ -142,9 +178,10 @@ const UploadQuestionPage = () => {
     setError('');
 
     try {
-      const questions = Object.entries(extractedQuestions).map(([qno, question]) => ({
+      const questions = Object.entries(extractedQuestions).map(([qno, { question, marks }]) => ({
         qno: parseInt(qno),
         question,
+        marks,
       }));
 
       const formData = new FormData();
@@ -272,11 +309,12 @@ const UploadQuestionPage = () => {
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h3 className="text-xl font-semibold text-gray-800 mb-4">Extracted Questions</h3>
           <div className="space-y-4">
-            {Object.entries(extractedQuestions).map(([qNum, qText]) => (
+            {Object.entries(extractedQuestions).map(([qNum, { question, marks }]) => (
               <QuestionItem
                 key={qNum}
                 questionNum={qNum}
-                questionText={qText}
+                questionText={question}
+                marks={marks}
                 requiresDiagram={questionRequiresDiagram[qNum]}
                 onDiagramUpload={handleDiagramUpload}
               />
@@ -294,11 +332,6 @@ const UploadQuestionPage = () => {
           </div>
 
           {error && <ErrorBox message={error} />}
-          {isSubmitDisabled() && (
-            <div className="mt-4 p-4 bg-yellow-50 rounded-md border border-yellow-200 text-yellow-700">
-              Please upload diagrams for all required questions before continuing.
-            </div>
-          )}
         </div>
       )}
     </div>

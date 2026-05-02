@@ -36,6 +36,7 @@ def upload_question_paper_json(request):
         for q in questions:
             qno = q.get('qno')
             question_text = q.get('question')
+            marks = q.get('marks', 10)   # default 10 if not provided
 
             if not all([qno is not None, question_text]):
                 return JsonResponse({'error': f'Missing fields in question {qno}.'}, status=400)
@@ -53,6 +54,7 @@ def upload_question_paper_json(request):
             processed_questions.append({
                 'qno': qno,
                 'question': question_text,
+                'marks': int(marks),
                 'image': image_data
             })
 

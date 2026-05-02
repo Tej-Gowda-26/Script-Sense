@@ -9,12 +9,16 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Max RAG context characters sent per question (keeps prompts within Groq TPM limits)
-MAX_RAG_CHARS = 4000
+# Max RAG context characters sent per question (keeps prompts within Groq token limits)
+MAX_RAG_CHARS = 2000
 # Delay between sequential Groq calls to stay under tokens-per-minute limits
 INTER_QUESTION_DELAY = 0.6   # seconds
-# Max retries on 429 rate-limit response
-GROQ_MAX_RETRIES = 3
+# Model fallback chain — tried in order when a rate limit is hit
+# Primary: large, high quality. Fallback: smaller, 5× higher daily quota.
+GROQ_MODEL_CHAIN = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+]
 
 # ---------------------------------------------------------------------------
 # System prompt — encodes the full grading philosophy
@@ -180,20 +184,22 @@ def grade_questions(questions: list, default_total=None) -> list:
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {"role": "system", "content": GRADING_SYSTEM_PROMPT},
-                {"role": "user",   "content": user_prompt}
-            ],
-            "temperature": 0.2,
-            "max_tokens": 1024,
-        }
 
         content = None
         groq_response = None
 
-        for attempt in range(1, GROQ_MAX_RETRIES + 1):
+        # Try each model in the fallback chain
+        for model_name in GROQ_MODEL_CHAIN:
+            payload = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": GRADING_SYSTEM_PROMPT},
+                    {"role": "user",   "content": user_prompt}
+                ],
+                "temperature": 0.2,
+                "max_tokens": 1024,
+            }
+
             try:
                 groq_response = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
@@ -202,41 +208,58 @@ def grade_questions(questions: list, default_total=None) -> list:
                     timeout=60,
                 )
             except requests.RequestException as e:
-                logger.error(f"Q{idx+1}: Groq request exception (attempt {attempt}): {e}")
-                if attempt == GROQ_MAX_RETRIES:
-                    results.append({'index': idx, 'error': f'Groq API request failed: {str(e)}'})
-                    break
-                time.sleep(2 ** attempt)  # 2s, 4s backoff
-                continue
+                logger.error(f"Q{idx+1} [{model_name}]: request exception: {e}")
+                groq_response = None
+                continue  # try next model
 
             if groq_response.status_code == 200:
+                if model_name != GROQ_MODEL_CHAIN[0]:
+                    logger.warning(f"Q{idx+1}: graded with fallback model '{model_name}'")
                 break  # success
 
-            # Log the exact Groq error
+            # Parse and log the error
             try:
                 err_body = groq_response.json()
             except Exception:
                 err_body = groq_response.text
-            logger.error(f"Q{idx+1}: Groq HTTP {groq_response.status_code} (attempt {attempt}): {err_body}")
 
-            if groq_response.status_code == 429 and attempt < GROQ_MAX_RETRIES:
-                wait = 2 ** attempt          # 2s, 4s
-                logger.warning(f"Q{idx+1}: Rate limited — waiting {wait}s before retry {attempt+1}/{GROQ_MAX_RETRIES}")
-                time.sleep(wait)
+            err_str = str(err_body)
+            is_429   = groq_response.status_code == 429
+            is_tpd   = 'tokens per day' in err_str.lower() or 'tpd' in err_str.lower()
+            is_tpm   = is_429 and not is_tpd
+
+            logger.error(f"Q{idx+1} [{model_name}]: HTTP {groq_response.status_code}: {err_str[:300]}")
+
+            if is_tpd:
+                # Daily quota exhausted — no point retrying same model; move to fallback
+                logger.warning(f"Q{idx+1} [{model_name}]: TPD limit hit — trying next model in chain")
+                groq_response = None
                 continue
 
-            # Non-retryable error
+            if is_tpm:
+                # Per-minute rate limit — short wait then retry SAME model (not fallback)
+                logger.warning(f"Q{idx+1} [{model_name}]: TPM limit — waiting 5s")
+                time.sleep(5)
+                try:
+                    groq_response = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        json=payload, headers=headers, timeout=60,
+                    )
+                except requests.RequestException:
+                    groq_response = None
+                if groq_response and groq_response.status_code == 200:
+                    break
+                # Still failing — try next model
+                groq_response = None
+                continue
+
+            # Any other non-200 error — don't try fallback, just fail
             results.append({
-                'index': idx,
-                'error': 'Groq API error',
-                'details': err_body,
-                'status_code': groq_response.status_code
+                'index': idx, 'error': 'Groq API error',
+                'details': err_body, 'status_code': groq_response.status_code
             })
-            groq_response = None   # signal failure to outer code
-            break
-        else:
-            # Exhausted retries without a successful response
             groq_response = None
+            break
 
         if groq_response is None or groq_response.status_code != 200:
             # Error already appended inside the loop

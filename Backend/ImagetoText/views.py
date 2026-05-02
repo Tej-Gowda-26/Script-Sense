@@ -60,7 +60,7 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
         logger.error(f"No questions found in DB for {subject}/{exam_type}")
         return []
     
-    db_questions = {q['qno']: q['question'] for q in doc['questions']}
+    db_questions = {q['qno']: {'question': q['question'], 'marks': q.get('marks', None)} for q in doc['questions']}
     logger.info(f"Found {len(db_questions)} questions in DB: {list(db_questions.keys())}")
     
     # Try multiple patterns to find question markers
@@ -103,11 +103,17 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
     # Build result
     result = []
     for qno in sorted(db_questions.keys()):
-        result.append({
-            "qno": qno,
-            "question": db_questions[qno],
-            "answer": found_answers.get(qno, ["No answer extracted"])
-        })
+        q_data   = db_questions[qno]
+        q_text   = q_data['question'] if isinstance(q_data, dict) else q_data
+        q_marks  = q_data['marks']    if isinstance(q_data, dict) else None
+        entry = {
+            "qno":      qno,
+            "question": q_text,
+            "answer":   found_answers.get(qno, ["No answer extracted"]),
+        }
+        if q_marks is not None:
+            entry["total_marks"] = q_marks
+        result.append(entry)
     
     logger.info(f"Parsed {len(result)} questions")
     return result
@@ -233,7 +239,9 @@ def process_exam_images(request):
 
         # --- Call grading directly (no HTTP) to avoid self-call deadlock ---
         logger.info("Calling grade_questions() directly...")
-        grading_results = grade_questions(refined_payload, default_total=total)
+        grading_results = grade_questions(refined_payload, default_total=int(total) if total else 10)
+        # If a question has its own total_marks from DB, grade_questions() will use it;
+        # default_total is the fallback for old records without per-question marks.
         response_data   = {'results': grading_results}
         response_text   = json.dumps(response_data)
         logger.info(f"Grading complete: {len(grading_results)} results")
