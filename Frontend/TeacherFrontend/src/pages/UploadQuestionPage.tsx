@@ -91,22 +91,25 @@ You are an expert at reading exam question papers.
 Task:
 This paper has ${numQuestions} main questions. Extract ALL questions and subquestions as SEPARATE entries.
 
+CRITICAL — How to decide if something is a subquestion or just part of a question:
+
+TRUE subquestions (use keys like "2a", "2b"):
+- The Q.No. column of the table has SEPARATE ROWS labeled "a." and "b." (or (a) and (b)) each with THEIR OWN separate mark value.
+- Example: Q2 has two rows — row "a" worth 6 marks and row "b" worth 4 marks → extract as "2a" and "2b".
+
+NOT subquestions — keep as ONE single question:
+- The question is ONE row in the table and has ONE mark value.
+- Inline bullet points like i), ii), iii), iv), v) or a., b., c. that appear INSIDE the question text body are NOT subquestions — they are parts of the question asking for multiple items.
+- Example: Q2 asks "Explain the following: i) Visual Field ii) Field of View iii) Latency" with 10 marks total → this is ONE question "2" worth 10 marks. Do NOT split into "2a", "2b", "2c".
+
 Key naming rules:
 - Main questions with no subparts: use keys "1", "2", "3", etc.
-- Main questions with subparts: use keys "2a", "2b", "3a", "3b", etc. (lowercase letter suffix).
-- Never combine subparts into one entry if they have separate marks.
-- If the paper shows Q2 with parts a and b each having their own marks, create keys "2a" and "2b" separately.
+- Main questions with true subparts (separate rows + separate marks): use keys "2a", "2b", "3a", "3b", etc. (lowercase letter suffix).
 
 Each value must contain:
-  - "question": the full question text exactly as written for that entry only
+  - "question": the full question text exactly as written (including any inline i), ii) bullets)
   - "marks": the integer marks for that specific entry from the Marks column
   - "requires_diagram": true or false
-
-Question extraction rules:
-- Include the full question text exactly as written.
-- Remove only the marks text if it appears inside the question line.
-- If a question/subquestion continues across multiple lines, combine it into one string.
-- Use the marks column carefully — each subpart may have its own mark value.
 
 Diagram detection rules:
 Set "requires_diagram" to true ONLY if the question explicitly asks the student to draw, sketch, label, or provide a figure/diagram.
@@ -123,12 +126,21 @@ Important:
 - If unsure about diagram, prefer false.
 - Do NOT infer diagrams unless wording clearly asks for one.
 
-Output format (example with subquestions):
+Output format examples:
+
+Example 1 — paper with true subquestions:
 {
   "1":  { "question": "Define Virtual Reality and list three features.", "marks": 5, "requires_diagram": false },
   "2a": { "question": "Illustrate the difference between 3-DoF and 6-DoF tracking systems.", "marks": 6, "requires_diagram": false },
   "2b": { "question": "Explain any two major applications of VR.", "marks": 4, "requires_diagram": false },
   "3a": { "question": "Differentiate OST and VST with a neat sketch.", "marks": 5, "requires_diagram": true }
+}
+
+Example 2 — paper with no subquestions (inline bullets are NOT subquestions):
+{
+  "1": { "question": "Compare VR and MR systems highlighting key differences.", "marks": 10, "requires_diagram": false },
+  "2": { "question": "Explain the following terms: i) Visual Field ii) Field of View iii) Frame Update Rate iv) Latency v) Brightness and Luminance", "marks": 10, "requires_diagram": false },
+  "3": { "question": "Differentiate OST and VST display systems with neat sketch.", "marks": 10, "requires_diagram": true }
 }
 
 Return ONLY the raw JSON object, no markdown, no extra text.
