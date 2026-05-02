@@ -10,7 +10,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 # Max RAG context characters sent per question (keeps prompts within Groq token limits)
-MAX_RAG_CHARS = 2000
+MAX_RAG_CHARS = 4000
 # Delay between sequential Groq calls to stay under tokens-per-minute limits
 INTER_QUESTION_DELAY = 0.6   # seconds
 # Model fallback chain — tried in order when a rate limit is hit

@@ -86,17 +86,52 @@ const UploadQuestionPage = () => {
       const base64Image = await convertImageToBase64(questionPaper);
 
       const prompt = `
-        You are an expert in extracting questions from question papers.
-        Please extract ${numQuestions} questions from the following image of a ${subjectName} ${examType} paper.
-        Return the result as a JSON object where each key is a question number and the value is an object with:
-          - "question": the full question text (exactly as written, including any sub-parts like a, b, i, ii)
-          - "marks": the integer mark/score allocated to that question (found in the Marks column)
-        DIAGRAM RULE: Add "(requires diagram)" at the end of the question text ONLY if the question
-        explicitly uses one of these exact phrases: "draw", "sketch", "neat diagram", "neat sketch",
-        "with a diagram", "with diagram", "show with a figure", "label the diagram".
-        Do NOT add "(requires diagram)" for words like "illustrate", "explain", "describe",
-        "compare", "differentiate", "discuss" — these are writing instructions, not drawing requests.
-        Example: { "1": { "question": "Explain VR systems.", "marks": 10 }, "2": { "question": "Draw the OST display setup. (requires diagram)", "marks": 6 } }
+You are an expert at reading exam question papers.
+
+Task:
+This paper has ${numQuestions} main questions. Extract ALL questions and subquestions as SEPARATE entries.
+
+Key naming rules:
+- Main questions with no subparts: use keys "1", "2", "3", etc.
+- Main questions with subparts: use keys "2a", "2b", "3a", "3b", etc. (lowercase letter suffix).
+- Never combine subparts into one entry if they have separate marks.
+- If the paper shows Q2 with parts a and b each having their own marks, create keys "2a" and "2b" separately.
+
+Each value must contain:
+  - "question": the full question text exactly as written for that entry only
+  - "marks": the integer marks for that specific entry from the Marks column
+  - "requires_diagram": true or false
+
+Question extraction rules:
+- Include the full question text exactly as written.
+- Remove only the marks text if it appears inside the question line.
+- If a question/subquestion continues across multiple lines, combine it into one string.
+- Use the marks column carefully — each subpart may have its own mark value.
+
+Diagram detection rules:
+Set "requires_diagram" to true ONLY if the question explicitly asks the student to draw, sketch, label, or provide a figure/diagram.
+Examples that imply true:
+- draw, sketch, neat sketch, neat diagram, draw and label, sketch and label
+- label the diagram, with a diagram, with a sketch, show a figure, draw the figure
+- illustrate with a diagram, represent with a diagram, construct a diagram
+
+Set "requires_diagram" to false if the question only says:
+- explain, describe, discuss, define, list, compare, differentiate, write short notes, illustrate
+unless it explicitly asks for a drawn sketch/diagram/figure.
+
+Important:
+- If unsure about diagram, prefer false.
+- Do NOT infer diagrams unless wording clearly asks for one.
+
+Output format (example with subquestions):
+{
+  "1":  { "question": "Define Virtual Reality and list three features.", "marks": 5, "requires_diagram": false },
+  "2a": { "question": "Illustrate the difference between 3-DoF and 6-DoF tracking systems.", "marks": 6, "requires_diagram": false },
+  "2b": { "question": "Explain any two major applications of VR.", "marks": 4, "requires_diagram": false },
+  "3a": { "question": "Differentiate OST and VST with a neat sketch.", "marks": 5, "requires_diagram": true }
+}
+
+Return ONLY the raw JSON object, no markdown, no extra text.
       `;
 
       const payload = {
@@ -136,17 +171,56 @@ const UploadQuestionPage = () => {
       const requiresDiagram: DiagramRequirement = {};
       const processedQuestions: ExtractedQuestions = {};
 
+      // ── Diagram detection: combined LLM hint + keyword scan ──
+      // Keywords use compound phrases only — broad single words like 'diagram' or 'sketch'
+      // are intentionally excluded to prevent false positives on questions that merely
+      // mention those concepts without asking the student to draw anything.
+      const DIAGRAM_KEYWORDS = [
+        'neat sketch', 'neat diagram', 'with a sketch', 'with sketch',
+        'with a diagram', 'with diagram', 'with a neat', 'draw ', 'draw a',
+        'show with a figure', 'label the diagram', 'show diagram',
+        'draw the diagram', 'draw and label', 'sketch and label',
+        'labelled diagram', 'labeled diagram', 'with labels', 'mark the diagram',
+        'illustrate with a diagram', 'illustrate with a sketch',
+        'make a diagram', 'construct a diagram', 'represent diagrammatically',
+        'show a figure', 'show a labeled figure', 'draw a labeled diagram',
+        'prepare a neat sketch', 'prepare a neat diagram',
+        'depict with a diagram', 'depict with a sketch',
+        'include a diagram', 'include a sketch',
+      ];
+
       Object.entries(questionsJson).forEach(([qNum, val]) => {
-        // Support both old string format and new {question, marks} object format
-        const raw = typeof val === 'string' ? val : (val as any).question || '';
-        const marks = typeof val === 'object' && (val as any).marks ? Number((val as any).marks) : 10;
-        const text = String(raw);
-        const needsDiagram = text.toLowerCase().includes('(requires diagram)');
+        const raw    = typeof val === 'string' ? val : (val as any).question || '';
+        const marks  = typeof val === 'object' && (val as any).marks ? Number((val as any).marks) : 10;
+        const text   = String(raw).replace(/\(requires diagram\)/gi, '').trim();
+        const lower  = text.toLowerCase();
+
+        // ── Layer 1: reliable keyword scan on the question text ──
+        const keywordMatch = DIAGRAM_KEYWORDS.some(kw => lower.includes(kw));
+
+        // ── Layer 2: LLM hint (if the model returned the boolean) ──
+        const llmHint = typeof val === 'object' && typeof (val as any).requires_diagram === 'boolean'
+          ? (val as any).requires_diagram as boolean
+          : null;
+
+        // Writing verbs that the LLM often mis-flags as requiring a diagram
+        const WRITING_VERBS = [
+          'illustrate', 'explain', 'describe', 'discuss',
+          'define', 'list', 'compare', 'differentiate', 'elaborate',
+        ];
+        const startsWithWritingVerb = WRITING_VERBS.some(
+          v => lower.startsWith(v) || lower.includes('. ' + v)
+        );
+
+        // Final decision:
+        //   - keyword matched → always true (most reliable)
+        //   - LLM says true AND question doesn't start with a pure writing verb → trust it
+        //   - otherwise false
+        const needsDiagram =
+          keywordMatch || (llmHint === true && !startsWithWritingVerb);
+
         requiresDiagram[qNum] = needsDiagram;
-        processedQuestions[qNum] = {
-          question: text.replace('(requires diagram)', '').trim(),
-          marks,
-        };
+        processedQuestions[qNum] = { question: text, marks };
       });
 
       const diagramInit: DiagramImages = {};
@@ -179,7 +253,7 @@ const UploadQuestionPage = () => {
 
     try {
       const questions = Object.entries(extractedQuestions).map(([qno, { question, marks }]) => ({
-        qno: parseInt(qno),
+        qno,        // keep as string: "1", "2a", "2b", etc.
         question,
         marks,
       }));

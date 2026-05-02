@@ -51,12 +51,12 @@ def upload_question_paper_json(request):
                     'data': Binary(image_file.read())
                 }
 
-            processed_questions.append({
-                'qno': qno,
-                'question': question_text,
-                'marks': int(marks),
-                'image': image_data
-            })
+        processed_questions.append({
+            'qno': str(qno),      # keep as string: "1", "2a", "2b", etc.
+            'question': question_text,
+            'marks': int(marks),
+            'image': image_data
+        })
 
         result = question_papers_collection.insert_one({
             'exam_type': exam_type,

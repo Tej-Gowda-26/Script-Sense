@@ -41,11 +41,17 @@ def encode_image(image_file):
 def get_question_text_from_db(subject, exam_type, qno):
     doc = questions_collection.find_one({"subject": subject, "exam_type": exam_type})
     if doc and 'questions' in doc:
+        qno_str = str(qno)  # qno is now a string like "1", "2a", "2b"
         for question in doc['questions']:
-            if question.get('qno') == int(qno):
+            if str(question.get('qno')) == qno_str:
                 return question.get('question')
-            
-    # return f"{subject} {exam_type} question {qno}"
+
+def _sort_key(qno):
+    """Natural sort for question keys: '1' < '2a' < '2b' < '3' < '3a'"""
+    m = re.match(r'^(\d+)([a-zA-Z]?)$', str(qno))
+    if m:
+        return (int(m.group(1)), m.group(2).lower())
+    return (0, str(qno))
 
 
 def parse_and_add_questions(extracted_text, subject, exam_type):
@@ -60,15 +66,20 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
         logger.error(f"No questions found in DB for {subject}/{exam_type}")
         return []
     
-    db_questions = {q['qno']: {'question': q['question'], 'marks': q.get('marks', None)} for q in doc['questions']}
-    logger.info(f"Found {len(db_questions)} questions in DB: {list(db_questions.keys())}")
+    # Use string keys throughout — qno is now "1", "2a", "2b", etc.
+    db_questions = {
+        str(q['qno']): {'question': q['question'], 'marks': q.get('marks', None)}
+        for q in doc['questions']
+    }
+    logger.info(f"Found {len(db_questions)} questions in DB: {sorted(db_questions.keys(), key=_sort_key)}")
     
-    # Try multiple patterns to find question markers
+    # Patterns ordered from most-specific to least-specific.
+    # Each group(1) captures the full qno string: "1", "2a", "2b", "3", etc.
     patterns = [
-        r'\[Q(\d+)\]',           # [Q1], [Q2]
-        r'^\s*(\d+)\)',          # 1), 2), 3)
-        r'Question\s*(\d+)',     # Question 1, Question 2
-        r'^(\d+)\.',             # 1., 2., 3.
+        r'\[Q(\d+[a-zA-Z]?)\]',                # [Q1], [Q2a]
+        r'Question\s*(\d+\s*[a-zA-Z]?)',       # Question 1, Question 2a, Question 2 a
+        r'^\s*(\d+[a-zA-Z]?)\)',               # 1), 2a), 2b)
+        r'^(\d+[a-zA-Z]?)\.',                  # 1., 2a., 2b.
     ]
     
     found_answers = {}
@@ -76,10 +87,12 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
     for pattern in patterns:
         matches = list(re.finditer(pattern, extracted_text, re.MULTILINE))
         if matches:
-            logger.info(f"✓ Found {len(matches)} matches with pattern: {pattern}")
+            logger.info(f"\u2713 Found {len(matches)} matches with pattern: {pattern}")
             
             for i, match in enumerate(matches):
-                qno = int(match.group(1))
+                # Normalise: remove spaces, lowercase letter suffix → "2 a" → "2a"
+                raw_key = match.group(1).strip().replace(' ', '')
+                qno_str = re.sub(r'(\d+)([a-zA-Z]?)', lambda m: m.group(1) + m.group(2).lower(), raw_key)
                 start = match.end()
                 end = matches[i + 1].start() if i + 1 < len(matches) else len(extracted_text)
                 
@@ -89,27 +102,30 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
                 if not answer_parts:
                     answer_parts = [answer_text] if answer_text else []
                 
-                found_answers[qno] = answer_parts
-                logger.info(f"  Q{qno}: {len(answer_parts)} paragraphs")
+                found_answers[qno_str] = answer_parts
+                logger.info(f"  Q{qno_str}: {len(answer_parts)} paragraphs")
             
             break
     
-    # If no pattern matched, try to intelligently split the text
+    # If no pattern matched, send everything as answer for the first DB question
     if not found_answers:
         logger.warning("No question markers found, attempting intelligent split...")
-        # Send everything as one answer for Q1
-        found_answers[1] = [extracted_text]
+        first_key = sorted(db_questions.keys(), key=_sort_key)[0] if db_questions else '1'
+        found_answers[first_key] = [extracted_text]
     
-    # Build result
+    # Build result — preserve natural question order
     result = []
-    for qno in sorted(db_questions.keys()):
-        q_data   = db_questions[qno]
-        q_text   = q_data['question'] if isinstance(q_data, dict) else q_data
-        q_marks  = q_data['marks']    if isinstance(q_data, dict) else None
+    for qno_str in sorted(db_questions.keys(), key=_sort_key):
+        q_data  = db_questions[qno_str]
+        q_text  = q_data['question'] if isinstance(q_data, dict) else q_data
+        q_marks = q_data['marks']    if isinstance(q_data, dict) else None
+
+        # Empty string for missing answers — Evaluate will award 0 automatically
+        raw_answer = found_answers.get(qno_str, [])
         entry = {
-            "qno":      qno,
+            "qno":      qno_str,
             "question": q_text,
-            "answer":   found_answers.get(qno, ["No answer extracted"]),
+            "answer":   raw_answer if raw_answer else "",
         }
         if q_marks is not None:
             entry["total_marks"] = q_marks
@@ -118,19 +134,23 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
     logger.info(f"Parsed {len(result)} questions")
     return result
 
+
 def extract_text_from_images(base64_images):
     client = Groq(api_key=settings.GROQ_API_KEY)
 
     prompt = (
         "Extract only the visible text from these images, and organize it by question number.\n"
         "- Identify each question based on its number (e.g., Q1, 1., 2., etc.).\n"
-        "- Group each answer under its respective question number using clear headings like 'Question 1:', 'Question 2:', etc.\n"
-        "- Do NOT generate or assume any new content—only extract what's actually visible in the image.\n"
+        "- If the student wrote subpart answers (a, b, i, ii), label each one separately using headings like "
+        "  'Question 2a:', 'Question 2b:', 'Question 3a:', etc.\n"
+        "- If you see answers labeled only as 'a.' or 'b.' under a main question number, infer the full label "
+        "  (e.g., 'a.' under Question 2 becomes 'Question 2a:').\n"
+        "- Group each answer under its respective question/subquestion label.\n"
+        "- Do NOT generate or assume any new content — only extract what is actually visible.\n"
         "- Correct any spelling mistakes.\n"
-        "- Preserve logical structure (e.g., headings, bullet points, tables, equations) within each answer.\n"
-        "- Use clean and consistent formatting so the output is both human-readable and machine-readable.\n"
-        "- Ignore decorative elements, arrows, or icons unless they contain actual text.\n"
-        "- Ensure each answer appears immediately after its corresponding question number."
+        "- Preserve logical structure (headings, bullet points, tables, equations) within each answer.\n"
+        "- Use clean, consistent formatting so the output is machine-readable.\n"
+        "- Ensure each answer appears immediately after its question/subquestion label."
     )
 
     message_content = [{"type": "text", "text": prompt}]
@@ -259,15 +279,17 @@ def process_exam_images(request):
                 # Error results get a zero-score placeholder so no question is silently dropped
                 if "error" in result and "score" not in result:
                     logger.warning(f"Error result at index {idx}: {result.get('error')} — inserting zero-score placeholder")
-                    question_data = next((q for q in refined_payload if q.get("qno") == idx + 1), None)
+                    q_entry = refined_payload[idx] if idx < len(refined_payload) else {}
+                    q_qno   = q_entry.get("qno", idx + 1)
+                    q_marks = q_entry.get("total_marks") or (int(total) if total else 0)
                     feedback_list.append({
                         "index":   idx,
-                        "qno":     idx + 1,
-                        "question": question_data.get("question", f"Question {idx + 1}") if question_data else f"Question {idx + 1}",
+                        "qno":     q_qno,
+                        "question": q_entry.get("question", f"Question {q_qno}"),
                         "answer":   "",
                         "feedback": f"Grading failed for this question ({result.get('error', 'unknown error')}). Please review manually.",
                         "score":    0,
-                        "total":    int(total) if total else 0,
+                        "total":    int(q_marks),
                         "correctness_assessment": "", "completeness_assessment": "",
                         "relevance_assessment":   "", "depth_assessment": "",
                         "correct_points_found":   [], "missing_points": [], "incorrect_points": [],
