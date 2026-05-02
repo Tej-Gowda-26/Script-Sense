@@ -39,7 +39,11 @@ def encode_image(image_file):
 
 
 def get_question_text_from_db(subject, exam_type, qno):
-    doc = questions_collection.find_one({"subject": subject, "exam_type": exam_type})
+    # sort by _id desc → always use the most recently uploaded question paper
+    doc = questions_collection.find_one(
+        {"subject": subject, "exam_type": exam_type},
+        sort=[("_id", -1)]
+    )
     if doc and 'questions' in doc:
         qno_str = str(qno)  # qno is now a string like "1", "2a", "2b"
         for question in doc['questions']:
@@ -61,7 +65,11 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
     logger.info(f"First 500 chars: {extracted_text[:500]}")
     
     # Get all questions from database
-    doc = questions_collection.find_one({"subject": subject, "exam_type": exam_type})
+    # sort by _id desc → always use the most recently uploaded question paper
+    doc = questions_collection.find_one(
+        {"subject": subject, "exam_type": exam_type},
+        sort=[("_id", -1)]
+    )
     if not doc or 'questions' not in doc:
         logger.error(f"No questions found in DB for {subject}/{exam_type}")
         return []

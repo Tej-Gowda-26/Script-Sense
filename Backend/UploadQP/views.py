@@ -58,13 +58,19 @@ def upload_question_paper_json(request):
             'image': image_data
         })
 
-        result = question_papers_collection.insert_one({
-            'exam_type': exam_type,
-            'subject': subject,
-            'questions': processed_questions
-        })
-
-        return JsonResponse({'message': 'Question paper uploaded successfully!', 'id': str(result.inserted_id)}, status=201)
+        # replace_one + upsert=True ensures there is ALWAYS exactly one
+        # document per subject/exam_type — no stale old versions piling up.
+        result = question_papers_collection.replace_one(
+            {'exam_type': exam_type, 'subject': subject},   # filter
+            {                                                 # replacement
+                'exam_type': exam_type,
+                'subject': subject,
+                'questions': processed_questions
+            },
+            upsert=True
+        )
+        doc_id = str(result.upserted_id) if result.upserted_id else 'updated'
+        return JsonResponse({'message': 'Question paper uploaded successfully!', 'id': doc_id}, status=201)
 
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Invalid JSON format.'}, status=400)
