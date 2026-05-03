@@ -98,20 +98,20 @@ const UploadAnswerPage = () => {
     if (!responseData?.results) return null;
 
     const results = responseData.results;
-    const totalScored = results.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
-    const totalPossible = results.reduce((sum, r) => sum + (Number(r.maxScore ?? 10) || 10), 0);
+    const totalScored    = results.reduce((sum: number, r: any) => sum + (Number(r.score)        || 0),  0);
+    const totalPossible  = results.reduce((sum: number, r: any) => sum + (Number(r.total ?? 10) || 10), 0);
     const scorePercentage = totalPossible > 0 ? (totalScored / totalPossible) * 100 : 0;
 
     return (
       <div className="mt-10">
         <h2 className="text-2xl font-bold text-gray-800 mb-6">Evaluation Results</h2>
-        {results.map((res, idx) => (
+        {results.map((res: any, idx: number) => (
           <ResultItem
             key={idx}
-            questionNumber={idx + 1}
+            questionNumber={res.qno ?? idx + 1}
             question={res.question}
             score={res.score}
-            maxScore={10}
+            maxScore={Number(res.total ?? 10)}
             feedback={res.feedback}
           />
         ))}
