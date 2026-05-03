@@ -7,7 +7,7 @@ echo.
 :: Get the directory where this script lives
 set ROOT=%~dp0
 
-:: ── Backend (Python) ─────────────────────────────────────────────────────────
+:: Backend (Python) 
 echo [1/3] Setting up Backend...
 cd /d "%ROOT%Backend"
 
@@ -29,7 +29,7 @@ if %ERRORLEVEL% neq 0 (
 echo       Backend done.
 echo.
 
-:: ── Teacher Frontend (Node) ──────────────────────────────────────────────────
+:: Teacher Frontend (Node) 
 echo [2/3] Installing Teacher Frontend dependencies...
 cd /d "%ROOT%Frontend\TeacherFrontend"
 call npm install
@@ -41,7 +41,7 @@ if %ERRORLEVEL% neq 0 (
 echo       Teacher Frontend done.
 echo.
 
-:: ── Student Frontend (Node) ──────────────────────────────────────────────────
+:: Student Frontend (Node)
 echo [3/3] Installing Student Frontend dependencies...
 cd /d "%ROOT%Frontend\StudentFrontend"
 call npm install

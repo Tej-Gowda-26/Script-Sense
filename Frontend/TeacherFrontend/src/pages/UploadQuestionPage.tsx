@@ -267,6 +267,21 @@ Return ONLY the raw JSON object, no markdown, no extra text.
       setExtractedQuestions(processedQuestions);
       setQuestionRequiresDiagram(requiresDiagram);
       setDiagramImages(diagramInit);
+
+      // ── Verify: extracted main-question count vs manually entered count ──
+      // Keys like "1","2a","2b","3a","3b" → main numbers are 1,2,3
+      const mainQNumbers = new Set(
+        Object.keys(processedQuestions).map(k => k.replace(/[a-zA-Z]+$/, ''))
+      );
+      const expected = parseInt(numQuestions, 10);
+      if (!isNaN(expected) && mainQNumbers.size !== expected) {
+        alert(
+          `You entered ${expected} main question(s), but ${mainQNumbers.size} were extracted.\n\n` +
+          `Extracted main questions: ${[...mainQNumbers].sort((a, b) => Number(a) - Number(b)).join(', ')}\n\n` +
+          `Please review the extracted questions below before saving.`
+        );
+      }
+
       setStep(2);
 
     } catch (err: any) {

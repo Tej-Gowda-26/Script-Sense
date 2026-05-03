@@ -1,10 +1,10 @@
 # ScriptSense – Root .gitignore
 # This single file covers the entire project (Frontend, Backend, root).
 
-# ── Secrets ───────────────────────────────────────────────────────────────────
+# Secrets 
 .env
 
-# ── Python / Django ───────────────────────────────────────────────────────────
+# Python / Django
 __pycache__/
 *.py[cod]
 *$py.class
@@ -17,30 +17,30 @@ db.sqlite3
 db.sqlite3-journal
 media/
 
-# ── Virtual environments ──────────────────────────────────────────────────────
+# Virtual environments
 venv/
 .venv/
 env/
 
-# ── ML / FAISS artifacts ──────────────────────────────────────────────────────
+# ML / FAISS artifacts
 *.faiss
 *.pkl
 
-# ── Uploaded textbooks (PDFs stored locally, not committed) ──────────────────
+# Uploaded textbooks (PDFs stored locally, not committed) 
 Backend/Textbooks/
 
-# ── Node / Frontend ───────────────────────────────────────────────────────────
+# Node / Frontend 
 node_modules/
 dist/
 dist-ssr/
 *.local
 
-# ── IDE ───────────────────────────────────────────────────────────────────────
+# IDE
 .idea/
 .vscode/*
 !.vscode/extensions.json
 
-# ── OS ────────────────────────────────────────────────────────────────────────
+# OS
 .DS_Store
 Thumbs.db
 *.suo

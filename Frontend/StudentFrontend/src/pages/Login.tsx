@@ -39,7 +39,7 @@ const Login: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await authService.login(usn, password);
+      await authService.login(usn, password);
       login(usn);
       navigate('/dashboard');
     } catch (err: any) {
