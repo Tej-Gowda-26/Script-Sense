@@ -24,14 +24,14 @@ const Navbar: React.FC = () => {
           </Link>
 
           {/* Desktop menu */}
-          <div className="hidden md:flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-2">
             <Link
               to="/dashboard"
               className="px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors"
             >
               Dashboard
             </Link>
-            <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-600">
+            <div className="flex items-center gap-5 ml-1 pl-3 border-l border-slate-600">
               <span className="text-sm text-slate-400">{usn}</span>
               <button
                 onClick={handleLogout}
