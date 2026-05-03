@@ -221,7 +221,7 @@ const UploadAnswerPage = () => {
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <div>
-                <h3 className="font-semibold text-gray-900">Answer Sheets — {usn}</h3>
+                <h3 className="font-semibold text-gray-900">Answer Sheets — {examType} — {usn}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">Page {sheetIdx + 1} of {sheetUrls.length}</p>
               </div>
               <button
