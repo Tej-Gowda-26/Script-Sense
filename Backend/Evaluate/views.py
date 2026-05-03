@@ -28,6 +28,23 @@ GROQ_VISION_MODEL_CHAIN = [
     "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
 
+# Minimum OCR characters to consider a student has written a theory answer
+_HAS_THEORY_THRESHOLD = 50
+
+# Question starters that signal the question ONLY asks for a diagram (no theory expected)
+_DIAGRAM_ONLY_STARTERS = (
+    'draw ', 'draw a ', 'draw the ', 'sketch ', 'sketch the ',
+    'neat sketch of', 'neat diagram of', 'construct a diagram',
+    'represent diagrammatically', 'show the figure', 'label the',
+    'make a diagram', 'prepare a neat sketch', 'prepare a neat diagram',
+)
+
+
+def _is_diagram_only(question_text: str) -> bool:
+    """Return True when the question primarily asks for a drawn figure with no theory."""
+    lower = question_text.lower().strip()
+    return any(lower.startswith(kw) for kw in _DIAGRAM_ONLY_STARTERS)
+
 # ---------------------------------------------------------------------------
 # System prompt — encodes the full grading philosophy
 # ---------------------------------------------------------------------------
@@ -159,10 +176,14 @@ def grade_questions(questions: list, default_total=None) -> list:
             retrieved_context = retrieved_context[:MAX_RAG_CHARS] + "\n... [context truncated]"
         total_marks       = q.get('total_marks') or default_total
 
-        # Diagram images (visual grading)
-        ref_b64     = q.get('reference_image_b64', '')
-        student_b64 = q.get('student_diagram_b64', '')
-        has_diagram = bool(ref_b64 and student_b64)
+        # Diagram images
+        ref_b64             = q.get('reference_image_b64', '')
+        student_b64         = q.get('student_diagram_b64', '')
+        has_ref_diagram     = bool(ref_b64)
+        has_student_diagram = bool(student_b64)
+        has_diagram  = False   # resolved below after routing
+        marks_scale  = 1.0    # penalty multiplier (1.0 = no deduction)
+        penalty_note = ''     # appended to student feedback if marks are capped
 
         if not question or not total_marks:
             results.append({
@@ -202,6 +223,68 @@ def grade_questions(questions: list, default_total=None) -> list:
         except (ValueError, TypeError):
             results.append({'index': idx, 'error': 'total_marks must be an integer'})
             continue
+
+        # ── Diagram routing ──────────────────────────────────────────────────
+        # Determine: (a) whether question is diagram-only or theory+diagram,
+        # (b) what the student actually submitted, and (c) how to grade + penalise.
+        has_theory_answer = len(answer_text_check) > _HAS_THEORY_THRESHOLD
+
+        if has_ref_diagram:
+            if _is_diagram_only(question):
+                # ── Case A: question asks ONLY for a diagram ─────────────────
+                if not has_student_diagram:
+                    # No diagram found → hard zero
+                    logger.info(f"Q{idx+1}: Diagram-only question with no student diagram → 0 marks")
+                    results.append({
+                        'index': idx,
+                        'qno':   q.get('qno', idx + 1),
+                        'question': question,
+                        'answer':   '',
+                        'score': 0,
+                        'total': total_marks,
+                        'feedback': 'The question required a diagram, but no diagram was detected in your answer sheet.',
+                        'correctness_assessment':   'No diagram provided.',
+                        'completeness_assessment':  'Diagram is absent.',
+                        'relevance_assessment':     'Cannot assess — no diagram.',
+                        'depth_assessment':         'Cannot assess — no diagram.',
+                        'correct_points_found':     [],
+                        'missing_points':           ['Required diagram was not drawn.'],
+                        'incorrect_points':         [],
+                        'partial_credit_reasoning': 'Zero marks awarded because this question exclusively requires a diagram and none was detected.',
+                        'confidence': 'high',
+                        'used_rag_reference': False,
+                    })
+                    if idx < len(questions) - 1:
+                        time.sleep(INTER_QUESTION_DELAY)
+                    continue
+                else:
+                    # Diagram present → grade visually
+                    has_diagram = True
+
+            else:
+                # ── Case B: question requires BOTH theory AND diagram ─────────
+                if has_theory_answer and has_student_diagram:
+                    # Both present → full multimodal grading
+                    has_diagram = True
+                    logger.info(f"Q{idx+1}: Theory + diagram both present → full multimodal grading")
+
+                elif has_theory_answer and not has_student_diagram:
+                    # Theory written, diagram missing → deduct 40 %
+                    has_diagram  = False
+                    marks_scale  = 0.6
+                    penalty_note = '40% marks deducted for missing diagram.'
+                    logger.info(f"Q{idx+1}: Theory present but no diagram → capping at 60% of marks")
+
+                elif has_student_diagram and not has_theory_answer:
+                    # Diagram drawn, no theory → deduct 50 %
+                    has_diagram  = True
+                    marks_scale  = 0.5
+                    penalty_note = '50% marks deducted for missing written theory.'
+                    logger.info(f"Q{idx+1}: Diagram present but no theory → capping at 50% of marks")
+
+                # else: both absent — handled by the empty-answer guard above
+        # If no ref_diagram exists, has_diagram stays False → normal text grading
+        # ────────────────────────────────────────────────────────────────────────────
 
         user_prompt = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=has_diagram)
 
@@ -333,17 +416,22 @@ def grade_questions(questions: list, default_total=None) -> list:
 
             marks_awarded = float(grading.get('marks_awarded', 0))
             marks_awarded = max(0.0, min(marks_awarded, float(total_marks)))
+            # Apply partial-answer penalty (diagram or theory missing)
+            marks_awarded = round(marks_awarded * marks_scale, 1)
 
             answer_str = ' '.join(answer) if isinstance(answer, list) else str(answer)
+
+            base_feedback = grading.get('final_feedback', '')
+            final_feedback = f"{base_feedback} [{penalty_note}]" if penalty_note else base_feedback
 
             results.append({
                 'index': idx,
                 'qno':   q.get('qno', idx + 1),
                 'question': question,
                 'answer':   answer_str,
-                'score':    round(marks_awarded, 1),
+                'score':    marks_awarded,
                 'total':    total_marks,
-                'feedback': grading.get('final_feedback', ''),
+                'feedback': final_feedback,
                 'correctness_assessment':   grading.get('correctness_assessment', ''),
                 'completeness_assessment':  grading.get('completeness_assessment', ''),
                 'relevance_assessment':     grading.get('relevance_assessment', ''),
