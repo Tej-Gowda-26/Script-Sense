@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { studentService } from '../services/api';
 
 interface Feedback {
-  qno: number;
+  qno: string | number;
   question: string;
   answer: string;
   feedback: string;

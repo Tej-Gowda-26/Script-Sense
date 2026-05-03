@@ -1,7 +1,7 @@
 import React from 'react';
 
 type ResultItemProps = {
-  questionNumber: number;
+  questionNumber: string | number;
   question: string;
   score: number;
   maxScore: number;

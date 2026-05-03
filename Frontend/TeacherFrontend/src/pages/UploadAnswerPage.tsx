@@ -16,27 +16,27 @@ type ServerResponse = {
 
 const UploadAnswerPage = () => {
   const navigate = useNavigate();
-  const [subject, setSubject]       = useState('');
-  const [examType, setExamType]     = useState('');
-  const [usn, setUsn]               = useState('');
-  const [images, setImages]         = useState<File[]>([]);
+  const [subject, setSubject] = useState('');
+  const [examType, setExamType] = useState('');
+  const [usn, setUsn] = useState('');
+  const [images, setImages] = useState<File[]>([]);
 
   // RAG artifacts — set once via the textbook upload on UploadQuestionPage
   const [ragIndexFile, setRagIndexFile] = useState('');
-  const [ragMetaFile,  setRagMetaFile]  = useState('');
-  const [ragName,      setRagName]      = useState('');
+  const [ragMetaFile, setRagMetaFile] = useState('');
+  const [ragName, setRagName] = useState('');
 
-  const [error, setError]               = useState('');
-  const [loading, setLoading]           = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const [responseData, setResponseData] = useState<ServerResponse | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
-    setSubject(localStorage.getItem('subject')   || '');
+    setSubject(localStorage.getItem('subject') || '');
     setExamType(localStorage.getItem('examType') || '');
     setRagIndexFile(localStorage.getItem('rag_index_file') || '');
-    setRagMetaFile(localStorage.getItem('rag_meta_file')   || '');
-    setRagName(localStorage.getItem('rag_indexed_name')    || '');
+    setRagMetaFile(localStorage.getItem('rag_meta_file') || '');
+    setRagName(localStorage.getItem('rag_indexed_name') || '');
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,15 +53,15 @@ const UploadAnswerPage = () => {
 
     try {
       const formData = new FormData();
-      formData.append('subject',   subject);
+      formData.append('subject', subject);
       formData.append('exam_type', examType);
-      formData.append('total',     '10');
-      formData.append('usn',       usn);
+      formData.append('total', '10');
+      formData.append('usn', usn);
 
       // Forward RAG artifacts if available so the backend uses them for grading
       if (ragIndexFile && ragMetaFile) {
         formData.append('index_file', ragIndexFile);
-        formData.append('meta_file',  ragMetaFile);
+        formData.append('meta_file', ragMetaFile);
       }
 
       images.forEach(file => formData.append('images', file));
@@ -98,8 +98,8 @@ const UploadAnswerPage = () => {
     if (!responseData?.results) return null;
 
     const results = responseData.results;
-    const totalScored    = results.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
-    const totalPossible  = results.reduce((sum, r) => sum + (Number(r.maxScore ?? 10) || 10), 0);
+    const totalScored = results.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
+    const totalPossible = results.reduce((sum, r) => sum + (Number(r.maxScore ?? 10) || 10), 0);
     const scorePercentage = totalPossible > 0 ? (totalScored / totalPossible) * 100 : 0;
 
     return (
