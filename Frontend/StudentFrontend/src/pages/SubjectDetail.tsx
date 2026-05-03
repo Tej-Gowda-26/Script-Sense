@@ -156,32 +156,39 @@ const SubjectDetail: React.FC = () => {
               {/* Score summary card */}
               <div className="card p-5 mb-5">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">{selectedExamType} — Score Summary</h2>
-                <div className="flex flex-col md:flex-row md:items-center gap-5">
-                  <div className="bg-gray-50 rounded-lg p-4 md:w-56">
-                    <p className="text-sm text-gray-500 mb-1">Overall Score</p>
-                    <div className="flex items-end gap-1">
-                      <span className="text-2xl font-bold text-blue-700">{earned}</span>
-                      <span className="text-lg text-gray-400">/ {total}</span>
-                    </div>
-                    <div className="mt-2 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${barColor}`}
-                        style={{ width: `${scorePercentage}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      {scorePercentage.toFixed(1)}% · {scoreLabel}
-                    </p>
+
+                {/* Progress bar */}
+                <div className="mb-5">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                    <span>Overall Score</span>
+                    <span className="font-medium">{scorePercentage.toFixed(1)}%</span>
                   </div>
-                  <div className="flex gap-6">
-                    <div>
-                      <p className="text-sm text-gray-500">Questions</p>
-                      <p className="text-lg font-semibold text-gray-900">{feedbacks.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Exam Type</p>
-                      <p className="text-lg font-semibold text-gray-900">{selectedExamType}</p>
-                    </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${scorePercentage}%` }} />
+                  </div>
+                </div>
+
+                {/* Stat tiles — fills the full width */}
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 mb-1">Score</p>
+                    <p className="text-xl font-bold text-blue-700">{earned}</p>
+                    <p className="text-xs text-gray-400">out of {total}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 mb-1">Percentage</p>
+                    <p className="text-xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-400">{scoreLabel}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 mb-1">Questions</p>
+                    <p className="text-xl font-bold text-gray-900">{feedbacks.length}</p>
+                    <p className="text-xs text-gray-400">answered</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                    <p className="text-xs text-gray-500 mb-1">Exam Type</p>
+                    <p className="text-xl font-bold text-gray-900">{selectedExamType}</p>
+                    <p className="text-xs text-gray-400">assessment</p>
                   </div>
                 </div>
               </div>
