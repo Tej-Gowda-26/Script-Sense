@@ -21,11 +21,11 @@ GROQ_MODEL_CHAIN = [
     "llama-3.1-8b-instant",
 ]
 
-# Model chain for visual (diagram) grading — MUST be vision-capable models
-# llama-3.3-70b-versatile does NOT support image inputs; use llama-4 scout/maverick instead
+# Model chain for visual (diagram) grading — MUST be vision-capable models.
+# Only llama-4-scout is available as a vision model on Groq's on-demand tier.
+# If it's exhausted the grader falls back to text-only (see grade_questions).
 GROQ_VISION_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
 
 # Minimum OCR characters to consider a student has written a theory answer
@@ -378,7 +378,15 @@ def grade_questions(questions: list, default_total=None) -> list:
                 groq_response = None
                 continue
 
-            # Any other non-200 error — don't try fallback, just fail
+            # Any other non-200 error — try next model in chain rather than failing immediately
+            # (e.g. a 404 "model not found" should not silently drop the question)
+            is_model_error = groq_response.status_code in (404, 400)
+            if is_model_error:
+                logger.warning(f"Q{idx+1} [{model_name}]: {groq_response.status_code} error — trying next model")
+                groq_response = None
+                continue
+
+            # Unrecoverable error (auth, server error, etc.) — stop retrying
             results.append({
                 'index': idx, 'error': 'Groq API error',
                 'details': err_body, 'status_code': groq_response.status_code
@@ -387,13 +395,57 @@ def grade_questions(questions: list, default_total=None) -> list:
             break
 
         if groq_response is None or groq_response.status_code != 200:
-            # Error already appended inside the loop
-            if not any(r.get('index') == idx for r in results):
-                results.append({'index': idx, 'error': 'Groq API error after all retries'})
-            # Delay before next question even after failure
-            if idx < len(questions) - 1:
-                time.sleep(INTER_QUESTION_DELAY)
-            continue
+            # If this was a vision attempt and the chain is exhausted,
+            # degrade gracefully to text-only rather than emitting a zero-score error.
+            if has_diagram:
+                logger.warning(
+                    f"Q{idx+1}: Vision model unavailable — retrying as text-only (diagram quality not assessed)"
+                )
+                # Re-grade without images using the text model chain
+                text_prompt   = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=False)
+                text_response = None
+                for tm in GROQ_MODEL_CHAIN:
+                    try:
+                        text_response = requests.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            json={
+                                "model": tm,
+                                "messages": [
+                                    {"role": "system", "content": GRADING_SYSTEM_PROMPT},
+                                    {"role": "user",   "content": text_prompt},
+                                ],
+                                "temperature": 0.2,
+                                "max_tokens": 1024,
+                            },
+                            headers=headers, timeout=60,
+                        )
+                        if text_response.status_code == 200:
+                            break
+                    except requests.RequestException:
+                        pass
+                if text_response and text_response.status_code == 200:
+                    groq_response = text_response
+                    penalty_note  = (
+                        (penalty_note + " " if penalty_note else "") +
+                        "[Diagram quality could not be assessed — vision model unavailable; graded on written text only.]"
+                    )
+                    marks_scale = min(marks_scale, 0.6)  # cap at 60 % when diagram unverified
+                    # Continue to the normal JSON-parsing block below
+                else:
+                    # Text fallback also failed — last resort placeholder
+                    if not any(r.get('index') == idx for r in results):
+                        results.append({'index': idx, 'error': 'Groq API error after all retries (vision + text)'})
+                    if idx < len(questions) - 1:
+                        time.sleep(INTER_QUESTION_DELAY)
+                    continue
+            else:
+                # Error already appended inside the loop
+                if not any(r.get('index') == idx for r in results):
+                    results.append({'index': idx, 'error': 'Groq API error after all retries'})
+                # Delay before next question even after failure
+                if idx < len(questions) - 1:
+                    time.sleep(INTER_QUESTION_DELAY)
+                continue
 
         response = groq_response
 
