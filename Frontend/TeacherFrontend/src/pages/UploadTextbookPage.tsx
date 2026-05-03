@@ -255,7 +255,7 @@ const UploadTextbookPage = () => {
                       <p className="text-sm font-semibold text-gray-800 truncate">{book.name}</p>
                       {isActive ? (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-                          <Star className="h-3 w-3" /> Used in evaluation
+                          <Star className="h-3 w-3" /> In Use
                         </span>
                       ) : (
                         <span className="inline-flex items-center text-xs font-medium text-gray-400 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
