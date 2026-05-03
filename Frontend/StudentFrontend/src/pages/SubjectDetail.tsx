@@ -80,12 +80,20 @@ const SubjectDetail: React.FC = () => {
   const scorePercentage = total > 0 ? (earned / total) * 100 : 0;
 
   const barColor =
-    scorePercentage >= 70 ? 'bg-green-500' :
+    scorePercentage >= 85 ? 'bg-green-500' :
+    scorePercentage >= 60 ? 'bg-blue-500' :
     scorePercentage >= 40 ? 'bg-yellow-500' : 'bg-red-500';
 
   const scoreLabel =
-    scorePercentage >= 70 ? 'Good' :
+    scorePercentage >= 85 ? 'Excellent' :
+    scorePercentage >= 60 ? 'Good' :
     scorePercentage >= 40 ? 'Satisfactory' : 'Needs improvement';
+
+  const scoreLabelColor =
+    scorePercentage >= 85 ? 'text-green-600 bg-green-50 border-green-200' :
+    scorePercentage >= 60 ? 'text-blue-600 bg-blue-50 border-blue-200' :
+    scorePercentage >= 40 ? 'text-yellow-600 bg-yellow-50 border-yellow-200' :
+    'text-red-600 bg-red-50 border-red-200';
 
   return (
     <div>
@@ -155,7 +163,10 @@ const SubjectDetail: React.FC = () => {
             <div>
               {/* Score summary card */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-5 mb-5">
-                <h2 className="text-base font-semibold text-blue-900 mb-4">{selectedExamType} — Score Summary</h2>
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-base font-semibold text-blue-900">{selectedExamType} — Score Summary</h2>
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${scoreLabelColor}`}>{scoreLabel}</span>
+                </div>
 
                 {/* Progress bar */}
                 <div className="mb-5">
@@ -170,25 +181,28 @@ const SubjectDetail: React.FC = () => {
 
                 {/* Stat tiles — fills the full width */}
                 <div className="grid grid-cols-4 gap-4">
-                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-                    <p className="text-xs text-gray-500 mb-1">Score</p>
-                    <p className="text-xl font-bold text-blue-700">{earned}</p>
-                    <p className="text-xs text-gray-400">out of {total}</p>
+                  {/* Score */}
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+                    <p className="text-xs text-gray-500 mb-1.5">Score</p>
+                    <p className="text-blue-700 font-bold flex items-baseline justify-center gap-0.5">
+                      <span className="text-2xl">{earned}</span>
+                      <span className="text-sm text-gray-400">/{total}</span>
+                    </p>
                   </div>
-                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-                    <p className="text-xs text-gray-500 mb-1">Percentage</p>
-                    <p className="text-xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
-                    <p className="text-xs text-gray-400">{scoreLabel}</p>
+                  {/* Percentage */}
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+                    <p className="text-xs text-gray-500 mb-1.5">Percentage</p>
+                    <p className="text-2xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
                   </div>
-                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-                    <p className="text-xs text-gray-500 mb-1">Questions</p>
-                    <p className="text-xl font-bold text-gray-900">{feedbacks.length}</p>
-                    <p className="text-xs text-gray-400">answered</p>
+                  {/* Total Questions */}
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+                    <p className="text-xs text-gray-500 mb-1.5">Total Questions</p>
+                    <p className="text-2xl font-bold text-gray-900">{feedbacks.length}</p>
                   </div>
-                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-                    <p className="text-xs text-gray-500 mb-1">Exam Type</p>
-                    <p className="text-xl font-bold text-gray-900">{selectedExamType}</p>
-                    <p className="text-xs text-gray-400">assessment</p>
+                  {/* Exam Type */}
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+                    <p className="text-xs text-gray-500 mb-1.5">Exam Type</p>
+                    <p className="text-2xl font-bold text-gray-900">{selectedExamType}</p>
                   </div>
                 </div>
               </div>

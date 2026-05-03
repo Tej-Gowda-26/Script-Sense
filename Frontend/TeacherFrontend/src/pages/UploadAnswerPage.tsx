@@ -103,9 +103,15 @@ const UploadAnswerPage = () => {
     const scorePercentage = totalPossible > 0 ? (totalScored / totalPossible) * 100 : 0;
 
     const barColor =
-      scorePercentage >= 80 ? 'bg-green-500' :
+      scorePercentage >= 85 ? 'bg-green-500' :
       scorePercentage >= 60 ? 'bg-blue-500' :
       scorePercentage >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+    const scoreLabelColor =
+      scorePercentage >= 85 ? 'text-green-600 bg-green-50 border-green-200' :
+      scorePercentage >= 60 ? 'text-blue-600 bg-blue-50 border-blue-200' :
+      scorePercentage >= 40 ? 'text-yellow-600 bg-yellow-50 border-yellow-200' :
+      'text-red-600 bg-red-50 border-red-200';
 
     return (
       <div className="mt-8">
@@ -124,7 +130,12 @@ const UploadAnswerPage = () => {
 
         {/* Performance Summary */}
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-5 mt-6">
-          <h3 className="text-base font-semibold text-blue-900 mb-4">Performance Summary</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-base font-semibold text-blue-900">Performance Summary</h3>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${scoreLabelColor}`}>
+              {scorePercentage >= 85 ? 'Excellent' : scorePercentage >= 60 ? 'Good' : scorePercentage >= 40 ? 'Satisfactory' : 'Needs improvement'}
+            </span>
+          </div>
 
           {/* Progress bar */}
           <div className="mb-5">
@@ -139,22 +150,23 @@ const UploadAnswerPage = () => {
 
           {/* Stat tiles — fills the full width */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-              <p className="text-xs text-gray-500 mb-1">Score</p>
-              <p className="text-xl font-bold text-blue-700">{totalScored.toFixed(1)}</p>
-              <p className="text-xs text-gray-400">out of {totalPossible}</p>
-            </div>
-            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-              <p className="text-xs text-gray-500 mb-1">Percentage</p>
-              <p className="text-xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
-              <p className="text-xs text-gray-400">
-                {scorePercentage >= 80 ? 'Excellent' : scorePercentage >= 60 ? 'Good' : scorePercentage >= 40 ? 'Satisfactory' : 'Needs improvement'}
+            {/* Score */}
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+              <p className="text-xs text-gray-500 mb-1.5">Score</p>
+              <p className="text-blue-700 font-bold flex items-baseline justify-center gap-0.5">
+                <span className="text-2xl">{totalScored.toFixed(1)}</span>
+                <span className="text-sm text-gray-400">/{totalPossible}</span>
               </p>
             </div>
-            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
-              <p className="text-xs text-gray-500 mb-1">Questions</p>
-              <p className="text-xl font-bold text-gray-900">{results.length}</p>
-              <p className="text-xs text-gray-400">answered</p>
+            {/* Percentage */}
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+              <p className="text-xs text-gray-500 mb-1.5">Percentage</p>
+              <p className="text-2xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
+            </div>
+            {/* Total Questions */}
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
+              <p className="text-xs text-gray-500 mb-1.5">Total Questions</p>
+              <p className="text-2xl font-bold text-gray-900">{results.length}</p>
             </div>
           </div>
         </div>
