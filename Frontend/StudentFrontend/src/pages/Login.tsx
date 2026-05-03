@@ -23,9 +23,8 @@ const Login: React.FC = () => {
       return false;
     }
     
-    // USN format validation (1RV22XX000)
-    if (!/^1RV22[A-Z]{2}\d+$/.test(usn)) {
-      setError('Invalid USN format. Expected format: 1RV22XX000');
+    if (!/^\d{2}ET[A-Z]{2}\d{6}$/.test(usn)) {
+      setError('Invalid USN format');
       return false;
     }
     
@@ -82,7 +81,7 @@ const Login: React.FC = () => {
                 value={usn}
                 onChange={(e) => setUsn(e.target.value.toUpperCase())}
                 className="input-field"
-                placeholder="e.g., 1RV22CS001"
+                placeholder="e.g., 22ETIS411050"
                 autoComplete="username"
                 disabled={isLoading}
               />

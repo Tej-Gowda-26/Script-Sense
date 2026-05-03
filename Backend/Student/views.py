@@ -15,7 +15,7 @@ login_collection = db['Login']
 
 # Validate USN format
 def validate_usn(usn):
-    return re.match(r"^1RV22[A-Z]{2}\d+$", usn)
+    return re.match(r"^\d{2}ET[A-Z]{2}\d{3}\d{3}$", usn)
 
 @csrf_exempt
 def login(request):

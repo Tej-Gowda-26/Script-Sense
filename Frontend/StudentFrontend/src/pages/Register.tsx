@@ -17,36 +17,34 @@ const Register: React.FC = () => {
       setError('USN is required');
       return false;
     }
-    
+
     if (!password) {
       setError('Password is required');
       return false;
     }
-    
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return false;
     }
-    
-    // USN format validation (1RV22XX000)
-    if (!/^1RV22[A-Z]{2}\d+$/.test(usn)) {
-      setError('Invalid USN format. Expected format: 1RV22XX000');
+
+    if (!/^\d{2}ET[A-Z]{2}\d{6}$/.test(usn)) {
+      setError('Invalid USN format. Expected Format: Year + ET + Dept + ProgCode + Reg.No');
       return false;
     }
-    
-    // Password strength validation
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters long');
       return false;
     }
-    
+
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
+
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -77,7 +75,7 @@ const Register: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">Create an Account</h1>
           <p className="text-gray-600 mt-2">Join ScriptSense to track your academic progress</p>
         </div>
-        
+
         <div className="card p-6 md:p-8">
           {success ? (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4 flex items-center">
@@ -90,7 +88,7 @@ const Register: React.FC = () => {
               <p>{error}</p>
             </div>
           ) : null}
-          
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="usn" className="form-label">USN</label>
@@ -100,12 +98,12 @@ const Register: React.FC = () => {
                 value={usn}
                 onChange={(e) => setUsn(e.target.value.toUpperCase())}
                 className="input-field"
-                placeholder="e.g., 1RV22CS001"
+                placeholder="e.g., 22ETIS411050"
                 autoComplete="username"
                 disabled={isLoading || success}
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="password" className="form-label">Password</label>
               <input
@@ -119,7 +117,7 @@ const Register: React.FC = () => {
                 disabled={isLoading || success}
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="confirmPassword" className="form-label">Confirm Password</label>
               <input
@@ -133,7 +131,7 @@ const Register: React.FC = () => {
                 disabled={isLoading || success}
               />
             </div>
-            
+
             <button
               type="submit"
               className="btn btn-primary w-full mt-6"
@@ -142,7 +140,7 @@ const Register: React.FC = () => {
               {isLoading ? 'Registering...' : 'Register'}
             </button>
           </form>
-          
+
           <div className="mt-6 text-center text-gray-600">
             Already have an account?{' '}
             <Link to="/login" className="text-blue-600 hover:underline">
