@@ -40,8 +40,8 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = []
 
-# Internal service URLs – loaded from .env
-OTHER_DJANGO_APP_URL = os.environ.get('OTHER_DJANGO_APP_URL', 'http://127.0.0.1:8000/evaluate/script/')
+# Internal service URL — used to POST graded feedback to the student app
+OTHER_APP_URL = os.environ.get('OTHER_APP_URL', 'http://127.0.0.1:8000/student/feedback/')
 
 
 # Application definition
@@ -102,12 +102,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'Grader.wsgi.application'
-
-
-
-
-OTHER_APP_URL = os.environ.get('OTHER_APP_URL', 'http://127.0.0.1:8000/student/feedback/')
-
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 

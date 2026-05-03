@@ -4,8 +4,11 @@ from django.conf import settings
 from pymongo import MongoClient
 import base64
 import json
+import logging
 import re
 import bcrypt
+
+logger = logging.getLogger(__name__)
 
 # MongoDB client – URI loaded from settings (which reads from .env)
 client = MongoClient(settings.MONGO_URI)
@@ -89,9 +92,9 @@ def get_registered_subjects(request):
         try:
             data = json.loads(request.body)
             usn = data.get('usn')
-            print(f"Received USN: {usn}")
+            logger.debug(f"Received USN: {usn}")
         except json.JSONDecodeError as e:
-            print(f"JSON decode error: {e}")
+            logger.warning(f"JSON decode error: {e}")
             return JsonResponse({'error': 'Invalid JSON in request body'}, status=400)
             
         if not usn:
@@ -102,7 +105,7 @@ def get_registered_subjects(request):
 
         # Find all records for this student using module-level collection
         student_records = list(collection.find({"usn": usn}))
-        print(f"Found {len(student_records)} records for USN: {usn}")
+        logger.debug(f"Found {len(student_records)} records for USN: {usn}")
         
         if not student_records:
             return JsonResponse({'subjects': []})  # Empty subjects array
@@ -138,13 +141,11 @@ def get_registered_subjects(request):
             'subjectsData': subjects_with_details
         }
         
-        print(f"Response data: {response_data}")
+        logger.debug(f"Response data: {response_data}")
         return JsonResponse(response_data)
 
     except Exception as e:
-        print(f"Error in get_registered_subjects: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in get_registered_subjects: {str(e)}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
 
 

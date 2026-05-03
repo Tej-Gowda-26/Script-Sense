@@ -182,29 +182,15 @@ def extract_text_from_images(base64_images):
     return response.choices[0].message.content
 
 
-def trigger_another_app(payload):
-    """POST extracted data to another Django app"""
-    try:
-        logger.info(f"Triggering other app at {settings.OTHER_DJANGO_APP_URL} with payload.")
-        response = requests.post(settings.OTHER_DJANGO_APP_URL, json=payload, timeout=10)
-        logger.info(f"Received response from other app: status {response.status_code}")
-        return response.status_code, response.text
-    except requests.RequestException as e:
-        logger.error(f"Error triggering other app: {e}")
-        return 500, str(e)
-
-
-
-
 def trigger_another_app2(payload):
-    """POST extracted data to another Django app"""
+    """POST graded feedback to the student app."""
     try:
-        logger.info(f"Triggering other app at {settings.OTHER_APP_URL} with payload.")
+        logger.info(f"Triggering student app at {settings.OTHER_APP_URL} with payload.")
         response = requests.post(settings.OTHER_APP_URL, json=payload, timeout=10)
-        logger.info(f"Received response from other app: status {response.status_code}")
+        logger.info(f"Received response from student app: status {response.status_code}")
         return response.status_code, response.text
     except requests.RequestException as e:
-        logger.error(f"Error triggering other app: {e}")
+        logger.error(f"Error triggering student app: {e}")
         return 500, str(e)
 
 @csrf_exempt

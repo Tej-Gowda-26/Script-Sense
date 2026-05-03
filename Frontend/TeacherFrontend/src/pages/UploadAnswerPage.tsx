@@ -5,9 +5,22 @@ import FileUpload from '../components/FileUpload';
 import ResultItem from '../components/ResultCard';
 
 type EvaluationResult = {
+  qno: string | number;
   question: string;
+  answer: string;
   score: number;
+  total: number;
   feedback: string;
+  correctness_assessment: string;
+  completeness_assessment: string;
+  relevance_assessment: string;
+  depth_assessment: string;
+  correct_points_found: string[];
+  missing_points: string[];
+  incorrect_points: string[];
+  partial_credit_reasoning: string;
+  confidence: string;
+  used_rag_reference: boolean;
 };
 
 type ServerResponse = {
@@ -55,6 +68,8 @@ const UploadAnswerPage = () => {
       const formData = new FormData();
       formData.append('subject', subject);
       formData.append('exam_type', examType);
+      // Fallback total per question — backend uses per-question marks from MongoDB;
+      // this '10' only applies for legacy records that have no marks stored.
       formData.append('total', '10');
       formData.append('usn', usn);
 
