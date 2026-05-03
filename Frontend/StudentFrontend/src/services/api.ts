@@ -26,11 +26,16 @@ export const studentService = {
     const response = await api.post('/subjects/', { usn });
     return response.data;
   },
-  
+
   getSubjectDetails: async (usn: string, subject: string, examType: string) => {
     const response = await api.get(`/feedback/?usn=${usn}&subject=${subject}&exam_type=${examType}`);
     return response.data;
-  }
+  },
+
+  getAnswerSheets: async (usn: string, subject: string, examType: string) => {
+    const response = await api.get(`/sheets/?usn=${usn}&subject=${subject}&exam_type=${examType}`);
+    return response.data;
+  },
 };
 
 export default api;

@@ -203,17 +203,23 @@ def add_or_get_feedback_marks(request):
                 "subject": subject,
                 "exam_type": exam_type
             }
-            
+
+            # Store answer_sheets alongside feedbacks (list of base64 image strings)
+            answer_sheets = data.get('answer_sheets', [])
+            if not isinstance(answer_sheets, list):
+                answer_sheets = []
+
             # Update or insert the document with the new feedbacks array
             update = {
                 "$set": {
                     "usn": usn,
                     "subject": subject,
                     "exam_type": exam_type,
-                    "feedbacks": feedbacks
+                    "feedbacks": feedbacks,
+                    "answer_sheets": answer_sheets,
                 }
             }
-            
+
             collection.update_one(query, update, upsert=True)
             return JsonResponse({"message": "Feedbacks added successfully"})
 
@@ -245,3 +251,29 @@ def add_or_get_feedback_marks(request):
             "feedbacks": result.get("feedbacks", [])
         })
 
+
+
+# ---- Get Answer Sheets (images) ----
+@csrf_exempt
+def get_answer_sheets(request):
+    """Return the stored base64 answer sheet images for a student's exam submission."""
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Only GET allowed'}, status=405)
+
+    usn       = request.GET.get('usn', '').strip()
+    subject   = request.GET.get('subject', '').strip()
+    exam_type = request.GET.get('exam_type', '').strip()
+
+    if not validate_usn(usn):
+        return JsonResponse({'error': 'Invalid USN'}, status=400)
+    if not subject or not exam_type:
+        return JsonResponse({'error': 'subject and exam_type are required'}, status=400)
+
+    result = collection.find_one(
+        {"usn": usn, "subject": subject, "exam_type": exam_type},
+        {"_id": 0, "answer_sheets": 1}
+    )
+    if not result:
+        return JsonResponse({'answer_sheets': []})
+
+    return JsonResponse({'answer_sheets': result.get('answer_sheets', [])})

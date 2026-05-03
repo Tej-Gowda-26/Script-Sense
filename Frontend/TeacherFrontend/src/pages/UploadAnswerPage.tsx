@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
 import FileUpload from '../components/FileUpload';
@@ -43,6 +43,17 @@ const UploadAnswerPage = () => {
   const [loading, setLoading] = useState(false);
   const [responseData, setResponseData] = useState<ServerResponse | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Answer sheet viewer
+  const [showSheets, setShowSheets] = useState(false);
+  const [sheetIdx, setSheetIdx] = useState(0);
+
+  // Create object URLs from uploaded File objects (revoked on cleanup)
+  const sheetUrls = useMemo(
+    () => images.map(file => URL.createObjectURL(file)),
+    [images]
+  );
+  useEffect(() => () => sheetUrls.forEach(url => URL.revokeObjectURL(url)), [sheetUrls]);
 
   useEffect(() => {
     setSubject(localStorage.getItem('subject') || '');
@@ -130,7 +141,17 @@ const UploadAnswerPage = () => {
 
     return (
       <div className="mt-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-5">Evaluation Results</h2>
+        <div className="flex items-center gap-3 mb-5">
+          <h2 className="text-xl font-bold text-gray-900">Evaluation Results</h2>
+          {sheetUrls.length > 0 && (
+            <button
+              onClick={() => { setSheetIdx(0); setShowSheets(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors"
+            >
+              👁 View Answer Sheets
+            </button>
+          )}
+        </div>
 
         {results.map((res: any, idx: number) => (
           <ResultItem
@@ -186,6 +207,76 @@ const UploadAnswerPage = () => {
           </div>
         </div>
       </div>
+
+      {/* ── Answer Sheet Viewer Modal ── */}
+      {showSheets && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowSheets(false)}
+        >
+          <div
+            className="bg-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="font-semibold text-gray-900">Answer Sheets — {usn}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Page {sheetIdx + 1} of {sheetUrls.length}</p>
+              </div>
+              <button
+                onClick={() => setShowSheets(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Image area */}
+            <div className="flex-1 flex items-center justify-center bg-gray-100 min-h-[50vh] relative">
+              <img
+                src={sheetUrls[sheetIdx]}
+                alt={`Answer sheet page ${sheetIdx + 1}`}
+                className="max-h-[60vh] max-w-full object-contain"
+              />
+              {sheetIdx > 0 && (
+                <button
+                  onClick={() => setSheetIdx(i => i - 1)}
+                  className="absolute left-3 p-2.5 bg-white/90 hover:bg-white rounded-full shadow-md text-gray-700 text-lg transition-colors"
+                >
+                  ←
+                </button>
+              )}
+              {sheetIdx < sheetUrls.length - 1 && (
+                <button
+                  onClick={() => setSheetIdx(i => i + 1)}
+                  className="absolute right-3 p-2.5 bg-white/90 hover:bg-white rounded-full shadow-md text-gray-700 text-lg transition-colors"
+                >
+                  →
+                </button>
+              )}
+            </div>
+
+            {/* Thumbnail strip */}
+            {sheetUrls.length > 1 && (
+              <div className="flex gap-2 p-3 border-t border-gray-200 overflow-x-auto bg-white">
+                {sheetUrls.map((url, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSheetIdx(i)}
+                    className={`flex-shrink-0 w-12 h-16 rounded-lg overflow-hidden border-2 transition-colors ${
+                      i === sheetIdx ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <img src={url} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
     );
   };
 

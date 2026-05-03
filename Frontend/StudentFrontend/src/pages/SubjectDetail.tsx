@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, FileText, AlertTriangle, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, FileText, AlertTriangle, Loader2, CheckCircle, XCircle, Eye, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { studentService } from '../services/api';
 
@@ -28,6 +28,12 @@ const SubjectDetail: React.FC = () => {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [subjectData, setSubjectData] = useState<SubjectData | null>(null);
   const [selectedExamType, setSelectedExamType] = useState<string>('');
+
+  // Answer sheet viewer
+  const [showSheets, setShowSheets] = useState(false);
+  const [sheets, setSheets] = useState<string[]>([]);
+  const [loadingSheets, setLoadingSheets] = useState(false);
+  const [sheetIdx, setSheetIdx] = useState(0);
 
   useEffect(() => {
     const fetchSubjectData = async () => {
@@ -68,6 +74,24 @@ const SubjectDetail: React.FC = () => {
     };
     if (selectedExamType) fetchFeedback();
   }, [usn, subject, selectedExamType]);
+
+  const openSheets = async () => {
+    setSheetIdx(0);
+    setShowSheets(true);
+    if (sheets.length > 0) return; // already loaded for this exam type
+    setLoadingSheets(true);
+    try {
+      const data = await studentService.getAnswerSheets(usn!, subject!, selectedExamType);
+      setSheets(data.answer_sheets || []);
+    } catch {
+      setSheets([]);
+    } finally {
+      setLoadingSheets(false);
+    }
+  };
+
+  // Reset sheets cache when exam type changes so we re-fetch
+  useEffect(() => { setSheets([]); }, [selectedExamType]);
 
   const calculateTotalScore = () => {
     if (!feedbacks.length) return { earned: 0, total: 0 };
@@ -117,22 +141,33 @@ const SubjectDetail: React.FC = () => {
           </h1>
         </div>
 
-        {/* Exam type tabs */}
+        {/* Exam type tabs + View Sheets button */}
         {subjectData?.paperTypes && subjectData.paperTypes.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {subjectData.paperTypes.map((type) => (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {subjectData.paperTypes.map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setSelectedExamType(type)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    selectedExamType === type
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+            {selectedExamType && feedbacks.length > 0 && (
               <button
-                key={type}
-                onClick={() => setSelectedExamType(type)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  selectedExamType === type
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-                }`}
+                onClick={openSheets}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 transition-colors"
               >
-                {type}
+                <Eye size={14} />
+                View Answer Sheets
               </button>
-            ))}
+            )}
           </div>
         )}
       </div>
@@ -257,6 +292,92 @@ const SubjectDetail: React.FC = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Answer Sheet Viewer Modal ── */}
+      {showSheets && (
+        <div
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowSheets(false)}
+        >
+          <div
+            className="bg-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+              <div>
+                <h3 className="font-semibold text-gray-900">Answer Sheets — {selectedExamType}</h3>
+                {sheets.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-0.5">Page {sheetIdx + 1} of {sheets.length}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setShowSheets(false)}
+                className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Image area */}
+            <div className="flex-1 flex items-center justify-center bg-gray-100 min-h-[50vh] relative">
+              {loadingSheets ? (
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 size={28} className="text-blue-600 animate-spin" />
+                  <p className="text-sm text-gray-500">Loading answer sheets...</p>
+                </div>
+              ) : sheets.length === 0 ? (
+                <div className="text-center p-8">
+                  <FileText size={36} className="mx-auto text-gray-300 mb-3" />
+                  <p className="text-sm font-medium text-gray-500">No answer sheets found</p>
+                  <p className="text-xs text-gray-400 mt-1">Sheets for this exam have not been stored yet.</p>
+                </div>
+              ) : (
+                <>
+                  <img
+                    src={`data:image/jpeg;base64,${sheets[sheetIdx]}`}
+                    alt={`Answer sheet page ${sheetIdx + 1}`}
+                    className="max-h-[60vh] max-w-full object-contain"
+                  />
+                  {sheetIdx > 0 && (
+                    <button
+                      onClick={() => setSheetIdx(i => i - 1)}
+                      className="absolute left-3 p-2.5 bg-white/90 hover:bg-white rounded-full shadow-md text-gray-700 text-lg transition-colors"
+                    >
+                      ←
+                    </button>
+                  )}
+                  {sheetIdx < sheets.length - 1 && (
+                    <button
+                      onClick={() => setSheetIdx(i => i + 1)}
+                      className="absolute right-3 p-2.5 bg-white/90 hover:bg-white rounded-full shadow-md text-gray-700 text-lg transition-colors"
+                    >
+                      →
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Thumbnail strip */}
+            {sheets.length > 1 && (
+              <div className="flex gap-2 p-3 border-t border-gray-200 overflow-x-auto bg-white">
+                {sheets.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSheetIdx(i)}
+                    className={`flex-shrink-0 w-12 h-16 rounded-lg overflow-hidden border-2 transition-colors ${
+                      i === sheetIdx ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <img src={`data:image/jpeg;base64,${s}`} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

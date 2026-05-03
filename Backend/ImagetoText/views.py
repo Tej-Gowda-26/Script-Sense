@@ -427,14 +427,17 @@ def process_exam_images(request):
         logger.info(f"Generated feedback list: {feedback_list}")
         
         # Create the payload with the properly formatted feedback
+        # answer_sheets: base64 strings of every uploaded page — stored so students
+        # can review their own answer sheets from the dashboard later.
         student_payload = {
             'usn': usn,
             'subject': subject,
             'exam_type': exam_type,
             'feedback': feedback_list,
+            'answer_sheets': base64_images,
         }
-        
-        logger.info(f"Student payload: {student_payload}")
+
+        logger.info(f"Student payload built: {len(feedback_list)} feedbacks, {len(base64_images)} sheet image(s)")
         
         status, student_log = trigger_another_app2(student_payload)
     
