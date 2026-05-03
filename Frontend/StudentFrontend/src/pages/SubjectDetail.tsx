@@ -154,8 +154,8 @@ const SubjectDetail: React.FC = () => {
           {selectedExamType && (
             <div>
               {/* Score summary card */}
-              <div className="card p-5 mb-5">
-                <h2 className="text-base font-semibold text-gray-900 mb-4">{selectedExamType} — Score Summary</h2>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-5 mb-5">
+                <h2 className="text-base font-semibold text-blue-900 mb-4">{selectedExamType} — Score Summary</h2>
 
                 {/* Progress bar */}
                 <div className="mb-5">
@@ -170,22 +170,22 @@ const SubjectDetail: React.FC = () => {
 
                 {/* Stat tiles — fills the full width */}
                 <div className="grid grid-cols-4 gap-4">
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
                     <p className="text-xs text-gray-500 mb-1">Score</p>
                     <p className="text-xl font-bold text-blue-700">{earned}</p>
                     <p className="text-xs text-gray-400">out of {total}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
                     <p className="text-xs text-gray-500 mb-1">Percentage</p>
                     <p className="text-xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
                     <p className="text-xs text-gray-400">{scoreLabel}</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
                     <p className="text-xs text-gray-500 mb-1">Questions</p>
                     <p className="text-xl font-bold text-gray-900">{feedbacks.length}</p>
                     <p className="text-xs text-gray-400">answered</p>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <div className="bg-white rounded-lg p-4 text-center shadow-sm">
                     <p className="text-xs text-gray-500 mb-1">Exam Type</p>
                     <p className="text-xl font-bold text-gray-900">{selectedExamType}</p>
                     <p className="text-xs text-gray-400">assessment</p>

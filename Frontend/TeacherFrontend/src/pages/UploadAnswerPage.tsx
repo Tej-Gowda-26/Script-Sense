@@ -123,8 +123,8 @@ const UploadAnswerPage = () => {
         ))}
 
         {/* Performance Summary */}
-        <div className="bg-white rounded-lg border border-gray-200 p-5 mt-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-4">Performance Summary</h3>
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-5 mt-6">
+          <h3 className="text-base font-semibold text-blue-900 mb-4">Performance Summary</h3>
 
           {/* Progress bar */}
           <div className="mb-5">
@@ -139,19 +139,19 @@ const UploadAnswerPage = () => {
 
           {/* Stat tiles — fills the full width */}
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Score</p>
-              <p className="text-xl font-bold text-gray-900">{totalScored.toFixed(1)}</p>
+              <p className="text-xl font-bold text-blue-700">{totalScored.toFixed(1)}</p>
               <p className="text-xs text-gray-400">out of {totalPossible}</p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Percentage</p>
               <p className="text-xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
               <p className="text-xs text-gray-400">
                 {scorePercentage >= 80 ? 'Excellent' : scorePercentage >= 60 ? 'Good' : scorePercentage >= 40 ? 'Satisfactory' : 'Needs improvement'}
               </p>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
+            <div className="bg-white rounded-lg p-4 text-center shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Questions</p>
               <p className="text-xl font-bold text-gray-900">{results.length}</p>
               <p className="text-xs text-gray-400">answered</p>
