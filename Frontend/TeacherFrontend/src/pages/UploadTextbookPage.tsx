@@ -338,11 +338,7 @@ const UploadTextbookPage = () => {
         </div>
       )}
 
-      {/* Info note */}
-      <div className="mt-6 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-        <strong className="font-semibold">How this works:</strong> The active textbook (★) is indexed using sentence embeddings.
-        When grading, relevant passages are retrieved and sent to the AI as context. Only one textbook can be active at a time.
-      </div>
+
     </div>
   );
 };
