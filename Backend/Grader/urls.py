@@ -7,6 +7,5 @@ urlpatterns = [
     path('evaluate/', include('Evaluate.urls')),
     path('student/', include('Student.urls')),
     path('rag/', include('RagPipe.urls')),
-    path('imgeval/', include('ImageEval.urls')),
     path('imageto/', include('ImagetoText.urls')),
 ]

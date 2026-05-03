@@ -59,7 +59,6 @@ INSTALLED_APPS = [
     'RagPipe',
     'ImagetoText',
     'corsheaders',
-    'ImageEval',
 ]
 
 MIDDLEWARE = [
