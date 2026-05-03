@@ -140,7 +140,7 @@ const UploadAnswerPage = () => {
       'text-red-600 bg-red-50 border-red-200';
 
     return (
-      <div className="mt-8">
+      <><div className="mt-8">
         <div className="flex items-center gap-3 mb-5">
           <h2 className="text-xl font-bold text-gray-900">Evaluation Results</h2>
           {sheetUrls.length > 0 && (
@@ -276,7 +276,7 @@ const UploadAnswerPage = () => {
           </div>
         </div>
       )}
-    </div>
+      </>
     );
   };
 
