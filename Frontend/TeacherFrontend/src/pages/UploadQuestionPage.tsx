@@ -395,8 +395,8 @@ Return ONLY the raw JSON object, no markdown, no extra text.
             type="number"
           />
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="mt-5 mb-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
               Upload Question Paper Image
             </label>
             <input
