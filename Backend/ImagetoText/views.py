@@ -193,6 +193,75 @@ def trigger_another_app2(payload):
         logger.error(f"Error triggering student app: {e}")
         return 500, str(e)
 
+
+def get_reference_image_b64(subject: str, exam_type: str, qno) -> str:
+    """Fetch the reference diagram image for a question from MongoDB.
+    Returns a base64-encoded string, or empty string if no diagram exists.
+    """
+    try:
+        doc = questions_collection.find_one(
+            {"subject": subject, "exam_type": exam_type},
+            sort=[("_id", -1)]
+        )
+        if not doc or 'questions' not in doc:
+            return ""
+        qno_str = str(qno)
+        for q in doc['questions']:
+            if str(q.get('qno')) == qno_str:
+                image_data = q.get('image')
+                if image_data and image_data.get('data'):
+                    raw_bytes = bytes(image_data['data'])
+                    return base64.b64encode(raw_bytes).decode('utf-8')
+        return ""
+    except Exception as e:
+        logger.warning(f"Failed to retrieve reference image for Q{qno}: {e}")
+        return ""
+
+
+def find_student_diagram_page(base64_images: list, question_text: str, qno) -> str:
+    """Use Groq vision to identify which answer page contains the student's
+    diagram for the given question.
+    Returns the base64 string of that page, or empty string if not found.
+    """
+    if not base64_images:
+        return ""
+
+    groq_client = Groq(api_key=settings.GROQ_API_KEY)
+    n = len(base64_images)
+    prompt = (
+        f"You are reviewing {n} page(s) of a student's handwritten answer sheet.\n"
+        f"The question being answered is: \"{question_text}\"\n"
+        f"This question requires the student to draw a diagram or figure.\n\n"
+        f"Look through all {n} page(s) and identify which page number (1 to {n}) "
+        f"contains the student's drawn diagram or figure for this question.\n"
+        f"Reply with ONLY the page number as a single digit (e.g. '2'), "
+        f"or 'none' if no diagram is found on any page."
+    )
+
+    content = [{"type": "text", "text": prompt}]
+    for b64 in base64_images:
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    try:
+        response = groq_client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=[{"role": "user", "content": content}],
+            temperature=0.1,
+            stream=False,
+        )
+        result = response.choices[0].message.content.strip().lower()
+        if 'none' in result:
+            return ""
+        match = re.search(r'\b(\d+)\b', result)
+        if match:
+            page_num = int(match.group(1))
+            if 1 <= page_num <= n:
+                return base64_images[page_num - 1]
+    except Exception as e:
+        logger.warning(f"Diagram page detection failed for Q{qno}: {e}")
+
+    return ""
+
 @csrf_exempt
 def process_exam_images(request):
     if request.method != 'POST':
@@ -241,6 +310,24 @@ def process_exam_images(request):
                     logger.info(f"  Q{q.get('qno')}: no RAG context retrieved")
         else:
             logger.info("RAG not enabled for this submission (no index_file/meta_file provided)")
+
+        # --- Diagram enrichment: attach reference + student images for visual grading ---
+        diagram_count = 0
+        for q in refined_payload:
+            qno = q.get('qno')
+            ref_b64 = get_reference_image_b64(subject, exam_type, qno)
+            if ref_b64:
+                logger.info(f"Q{qno}: Reference diagram found — locating student diagram page")
+                student_b64 = find_student_diagram_page(base64_images, q.get('question', ''), qno)
+                if student_b64:
+                    q['reference_image_b64'] = ref_b64
+                    q['student_diagram_b64'] = student_b64
+                    diagram_count += 1
+                    logger.info(f"Q{qno}: Student diagram located — visual grading enabled")
+                else:
+                    logger.info(f"Q{qno}: No student diagram found — falling back to text-only grading")
+        if diagram_count:
+            logger.info(f"Visual grading enabled for {diagram_count} question(s)")
 
         payload = {
             'exam_type': exam_type,

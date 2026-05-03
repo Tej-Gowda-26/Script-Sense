@@ -77,7 +77,7 @@ Return ONLY a valid JSON object with EXACTLY these fields — no extra text:
 }"""
 
 
-def _build_user_prompt(question, answer, total_marks, retrieved_context=None):
+def _build_user_prompt(question, answer, total_marks, retrieved_context=None, has_diagram=False):
     """Build the per-question user-turn message."""
     if isinstance(answer, list):
         answer_text = " ".join(str(a) for a in answer)
@@ -92,6 +92,18 @@ def _build_user_prompt(question, answer, total_marks, retrieved_context=None):
 ## Retrieved Reference Context (use as supporting reference only — not as the model answer)
 {retrieved_context}"""
 
+    diagram_block = ""
+    if has_diagram:
+        diagram_block = """
+
+## Diagram Grading
+This question includes a diagram. The reference diagram (correct answer) and the student's drawn diagram are attached as images after this text.
+Evaluate BOTH:
+1. The visual diagram: check structure, labels, connections, completeness against the reference.
+2. The written/text description: check conceptual accuracy and explanations.
+Award marks for correct visual elements even if the text is incomplete, and vice versa.
+Provide a single holistic score that reflects both dimensions."""
+
     return f"""## Question
 {question}
 
@@ -99,7 +111,7 @@ def _build_user_prompt(question, answer, total_marks, retrieved_context=None):
 {answer_text}
 
 ## Marks Allotted
-{total_marks}{rag_block}
+{total_marks}{rag_block}{diagram_block}
 
 Grade the student answer fairly. Award partial marks where applicable. Return the result as a single JSON object matching the required output format exactly."""
 
@@ -138,6 +150,11 @@ def grade_questions(questions: list, default_total=None) -> list:
         if retrieved_context and len(retrieved_context) > MAX_RAG_CHARS:
             retrieved_context = retrieved_context[:MAX_RAG_CHARS] + "\n... [context truncated]"
         total_marks       = q.get('total_marks') or default_total
+
+        # Diagram images (visual grading)
+        ref_b64     = q.get('reference_image_b64', '')
+        student_b64 = q.get('student_diagram_b64', '')
+        has_diagram = bool(ref_b64 and student_b64)
 
         if not question or not total_marks:
             results.append({
@@ -178,7 +195,20 @@ def grade_questions(questions: list, default_total=None) -> list:
             results.append({'index': idx, 'error': 'total_marks must be an integer'})
             continue
 
-        user_prompt = _build_user_prompt(question, answer, total_marks, retrieved_context)
+        user_prompt = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=has_diagram)
+
+        # Build message content — multimodal if diagram images are present, text-only otherwise
+        if has_diagram:
+            user_content = [
+                {"type": "text",      "text": user_prompt},
+                {"type": "text",      "text": "Reference Diagram (correct answer):"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{ref_b64}"}},
+                {"type": "text",      "text": "Student's Drawn Diagram:"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{student_b64}"}},
+            ]
+            logger.info(f"Q{idx+1}: Using multimodal grading (text + reference diagram + student diagram)")
+        else:
+            user_content = user_prompt
 
         headers = {
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -194,7 +224,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 "model": model_name,
                 "messages": [
                     {"role": "system", "content": GRADING_SYSTEM_PROMPT},
-                    {"role": "user",   "content": user_prompt}
+                    {"role": "user",   "content": user_content}
                 ],
                 "temperature": 0.2,
                 "max_tokens": 1024,
