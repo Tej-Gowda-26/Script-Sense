@@ -15,9 +15,17 @@ MAX_RAG_CHARS = 4000
 INTER_QUESTION_DELAY = 0.6   # seconds
 # Model fallback chain — tried in order when a rate limit is hit
 # Primary: large, high quality. Fallback: smaller, 5× higher daily quota.
+# Model chain for text-only grading (high quality text models)
 GROQ_MODEL_CHAIN = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
+]
+
+# Model chain for visual (diagram) grading — MUST be vision-capable models
+# llama-3.3-70b-versatile does NOT support image inputs; use llama-4 scout/maverick instead
+GROQ_VISION_MODEL_CHAIN = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
 ]
 
 # ---------------------------------------------------------------------------
@@ -218,8 +226,12 @@ def grade_questions(questions: list, default_total=None) -> list:
         content = None
         groq_response = None
 
+        # Select model chain: vision-capable models for diagram questions,
+        # high-quality text models for text-only questions.
+        model_chain = GROQ_VISION_MODEL_CHAIN if has_diagram else GROQ_MODEL_CHAIN
+
         # Try each model in the fallback chain
-        for model_name in GROQ_MODEL_CHAIN:
+        for model_name in model_chain:
             payload = {
                 "model": model_name,
                 "messages": [
@@ -243,7 +255,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 continue  # try next model
 
             if groq_response.status_code == 200:
-                if model_name != GROQ_MODEL_CHAIN[0]:
+                if model_name != model_chain[0]:
                     logger.warning(f"Q{idx+1}: graded with fallback model '{model_name}'")
                 break  # success
 
