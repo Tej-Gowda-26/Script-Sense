@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
-  BookOpen, CheckCircle, Upload, Eye, EyeOff, Trash2,
-  ChevronDown, ChevronUp, Star, FileText,
+  BookOpen, Upload, Eye, EyeOff, Trash2,
+  Star, FileText,
 } from 'lucide-react';
 import Button from '../components/Button';
 
