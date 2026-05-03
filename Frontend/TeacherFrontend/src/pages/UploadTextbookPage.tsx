@@ -9,21 +9,21 @@ import Button from '../components/Button';
 type RagStatus = 'idle' | 'uploading' | 'error';
 
 interface Textbook {
-  name:       string;
+  name: string;
   index_file: string;
-  meta_file:  string;
-  pdf_file:   string;
+  meta_file: string;
+  pdf_file: string;
   uploadedAt: string;
 }
 
 // ── localStorage helpers ─────────────────────────────────────────────────────
-const LS_LIST   = 'rag_textbooks';        // Textbook[]
+const LS_LIST = 'rag_textbooks';        // Textbook[]
 const LS_ACTIVE = 'rag_active_name';      // active textbook name
 
 // Keys read by UploadAnswerPage — kept in sync with the active textbook
-const LS_INDEX  = 'rag_index_file';
-const LS_META   = 'rag_meta_file';
-const LS_PDF    = 'rag_pdf_file';
+const LS_INDEX = 'rag_index_file';
+const LS_META = 'rag_meta_file';
+const LS_PDF = 'rag_pdf_file';
 
 function loadList(): Textbook[] {
   try { return JSON.parse(localStorage.getItem(LS_LIST) || '[]'); }
@@ -36,9 +36,9 @@ function activateName(name: string, list: Textbook[]) {
   const book = list.find(b => b.name === name);
   if (!book) return;
   localStorage.setItem(LS_ACTIVE, name);
-  localStorage.setItem(LS_INDEX,  book.index_file);
-  localStorage.setItem(LS_META,   book.meta_file);
-  localStorage.setItem(LS_PDF,    book.pdf_file);
+  localStorage.setItem(LS_INDEX, book.index_file);
+  localStorage.setItem(LS_META, book.meta_file);
+  localStorage.setItem(LS_PDF, book.pdf_file);
   // Legacy keys (kept for compatibility)
   localStorage.setItem('rag_indexed_name', name);
 }
@@ -52,29 +52,29 @@ function deactivate() {
 
 // ── Component ────────────────────────────────────────────────────────────────
 const UploadTextbookPage = () => {
-  const [textbooks,   setTextbooks]  = useState<Textbook[]>([]);
-  const [activeName,  setActiveName] = useState('');
-  const [pdfFile,     setPdfFile]    = useState<File | null>(null);
-  const [ragStatus,   setRagStatus]  = useState<RagStatus>('idle');
-  const [ragError,    setRagError]   = useState('');
-  const [viewerBook,  setViewerBook] = useState<Textbook | null>(null);
+  const [textbooks, setTextbooks] = useState<Textbook[]>([]);
+  const [activeName, setActiveName] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [ragStatus, setRagStatus] = useState<RagStatus>('idle');
+  const [ragError, setRagError] = useState('');
+  const [viewerBook, setViewerBook] = useState<Textbook | null>(null);
 
   // Load from localStorage on mount (with legacy migration)
   useEffect(() => {
     let list = loadList();
 
     // Migrate legacy single-textbook localStorage entries
-    const legacyName  = localStorage.getItem('rag_indexed_name');
+    const legacyName = localStorage.getItem('rag_indexed_name');
     const legacyIndex = localStorage.getItem(LS_INDEX);
-    const legacyMeta  = localStorage.getItem(LS_META);
-    const legacyPdf   = localStorage.getItem(LS_PDF);
+    const legacyMeta = localStorage.getItem(LS_META);
+    const legacyPdf = localStorage.getItem(LS_PDF);
 
     if (legacyName && legacyIndex && legacyMeta && !list.find(b => b.name === legacyName)) {
       const migrated: Textbook = {
-        name:       legacyName,
+        name: legacyName,
         index_file: legacyIndex,
-        meta_file:  legacyMeta,
-        pdf_file:   legacyPdf || '',
+        meta_file: legacyMeta,
+        pdf_file: legacyPdf || '',
         uploadedAt: new Date().toISOString(),
       };
       list = [migrated, ...list];
@@ -117,10 +117,10 @@ const UploadTextbookPage = () => {
       }
 
       const newBook: Textbook = {
-        name:       pdfFile.name,
+        name: pdfFile.name,
         index_file: data.index_file,
-        meta_file:  data.meta_file,
-        pdf_file:   data.pdf_file || '',
+        meta_file: data.meta_file,
+        pdf_file: data.pdf_file || '',
         uploadedAt: new Date().toISOString(),
       };
 
@@ -180,19 +180,16 @@ const UploadTextbookPage = () => {
     <div className="max-w-4xl mx-auto">
 
       {/* Page heading */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Upload Textbook</h2>
-        <p className="text-gray-600">
-          Upload subject textbooks or reference PDFs. Select which one should be used
-          for RAG-assisted grading — it will be applied automatically to every evaluation.
-        </p>
+      <div className="page-header">
+        <h2>Upload Textbook</h2>
+        <p>Upload subject textbooks or reference PDFs. The active textbook is used for RAG-assisted grading on every evaluation.</p>
       </div>
 
-      {/* ── Upload card ── */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border mb-6">
+      {/* Upload card */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
-          <Upload className="h-5 w-5 text-blue-600" />
-          <h3 className="text-base font-semibold text-gray-800">Upload a new textbook</h3>
+          <Upload className="h-4 w-4 text-blue-600" />
+          <h3 className="text-sm font-semibold text-gray-800">Upload a new textbook</h3>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 items-start">
@@ -202,11 +199,11 @@ const UploadTextbookPage = () => {
               type="file"
               accept=".pdf"
               onChange={handleFileChange}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5"
+              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none"
             />
             {pdfFile && (
-              <p className="mt-1 text-xs text-gray-500">
-                {pdfFile.name} &middot; {(pdfFile.size / 1024).toFixed(0)} KB
+              <p className="mt-1.5 text-xs text-gray-400">
+                {pdfFile.name} · {(pdfFile.size / 1024).toFixed(0)} KB
               </p>
             )}
           </div>
@@ -220,26 +217,27 @@ const UploadTextbookPage = () => {
         </div>
 
         {ragStatus === 'error' && (
-          <p className="mt-3 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">{ragError}</p>
+          <div className="mt-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">{ragError}</div>
         )}
       </div>
 
       {/* ── Textbook list ── */}
       {textbooks.length === 0 ? (
-        <div className="bg-white p-10 rounded-xl shadow-sm border text-center text-gray-400">
-          <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p className="text-sm">No textbooks uploaded yet.</p>
+        <div className="bg-white rounded-lg border border-gray-200 py-14 text-center">
+          <BookOpen className="h-8 w-8 mx-auto mb-3 text-gray-300" />
+          <p className="text-sm font-medium text-gray-500">No textbooks uploaded yet.</p>
+          <p className="text-xs text-gray-400 mt-1">Upload a PDF to get started.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide px-1">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-widest px-1 mb-1">
             Uploaded Textbooks ({textbooks.length})
           </h3>
 
           {textbooks.map(book => {
-            const isActive   = book.name === activeName;
-            const isViewing  = viewerBook?.name === book.name;
-            const viewerUrl  = book.pdf_file
+            const isActive = book.name === activeName;
+            const isViewing = viewerBook?.name === book.name;
+            const viewerUrl = book.pdf_file
               ? `http://127.0.0.1:8000/rag/textbook/?pdf_file=${encodeURIComponent(book.pdf_file)}`
               : '';
             const uploadDate = new Date(book.uploadedAt).toLocaleDateString('en-IN', {
@@ -247,7 +245,7 @@ const UploadTextbookPage = () => {
             });
 
             return (
-              <div key={book.name} className="bg-white rounded-xl shadow-sm border overflow-hidden">
+              <div key={book.name} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 {/* Book row */}
                 <div className="flex items-center gap-4 p-4">
                   <FileText className={`h-8 w-8 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-300'}`} />
@@ -340,11 +338,10 @@ const UploadTextbookPage = () => {
         </div>
       )}
 
-      {/* Info card */}
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-700">
-        <strong>How this works:</strong> The active textbook (marked with ★) is indexed using sentence
-        embeddings. When grading, the most relevant passages are automatically retrieved and sent to
-        the AI as reference context. Only one textbook can be active at a time.
+      {/* Info note */}
+      <div className="mt-6 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+        <strong className="font-semibold">How this works:</strong> The active textbook (★) is indexed using sentence embeddings.
+        When grading, relevant passages are retrieved and sent to the AI as context. Only one textbook can be active at a time.
       </div>
     </div>
   );
