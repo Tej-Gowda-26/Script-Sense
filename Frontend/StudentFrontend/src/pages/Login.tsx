@@ -13,28 +13,19 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
 
   const validateForm = () => {
-    if (!usn.trim()) {
-      setError('USN is required');
-      return false;
-    }
-    
-    if (!password) {
-      setError('Password is required');
-      return false;
-    }
-    
+    if (!usn.trim()) { setError('USN is required'); return false; }
+    if (!password)   { setError('Password is required'); return false; }
+    // USN format: YY + ET + DD + PPP + RRR  (e.g. 22ETCS018001)
     if (!/^\d{2}ET[A-Z]{2}\d{6}$/.test(usn)) {
       setError('Invalid USN format');
       return false;
     }
-    
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -43,35 +34,36 @@ const Login: React.FC = () => {
       login(usn);
       navigate('/dashboard');
     } catch (err: any) {
-      if (err.response && err.response.data && err.response.data.error) {
-        setError(err.response.data.error);
-      } else {
-        setError('Login failed. Please check your credentials and try again.');
-      }
+      setError(
+        err.response?.data?.error ||
+        'Login failed. Please check your credentials and try again.'
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col justify-center">
-      <div className="max-w-md w-full mx-auto px-4">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center">
+      <div className="max-w-sm w-full mx-auto px-4">
+        {/* Brand */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-3">
-            <GraduationCap size={48} className="text-blue-700" />
+            <GraduationCap size={40} className="text-blue-600" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Login to ScriptSense</h1>
-          <p className="text-gray-600 mt-2">Access your academic performance and feedback</p>
+          <h1 className="text-2xl font-bold text-gray-900">Sign in to ScriptSense</h1>
+          <p className="text-sm text-gray-500 mt-1">Access your academic performance and feedback</p>
         </div>
-        
-        <div className="card p-6 md:p-8">
+
+        {/* Card */}
+        <div className="card p-6">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 flex items-start">
-              <AlertCircle size={20} className="mr-2 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-5 text-sm">
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
               <p>{error}</p>
             </div>
           )}
-          
+
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="usn" className="form-label">USN</label>
@@ -81,12 +73,12 @@ const Login: React.FC = () => {
                 value={usn}
                 onChange={(e) => setUsn(e.target.value.toUpperCase())}
                 className="input-field"
-                placeholder="e.g., 22ETIS411050"
+                placeholder="e.g. 22ETIS411050"
                 autoComplete="username"
                 disabled={isLoading}
               />
             </div>
-            
+
             <div className="form-group">
               <label htmlFor="password" className="form-label">Password</label>
               <input
@@ -100,22 +92,22 @@ const Login: React.FC = () => {
                 disabled={isLoading}
               />
             </div>
-            
+
             <button
               type="submit"
-              className="btn btn-primary w-full mt-6"
+              className="btn btn-primary w-full mt-2"
               disabled={isLoading}
             >
-              {isLoading ? 'Logging in...' : 'Login'}
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
-          
-          <div className="mt-6 text-center text-gray-600">
+
+          <p className="mt-5 text-center text-sm text-gray-500">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 hover:underline">
+            <Link to="/register" className="text-blue-600 hover:underline font-medium">
               Register
             </Link>
-          </div>
+          </p>
         </div>
       </div>
     </div>

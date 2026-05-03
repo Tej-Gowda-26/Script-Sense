@@ -14,59 +14,63 @@ const Navbar: React.FC = () => {
   };
 
   return (
-    <nav className="bg-blue-700 text-white shadow-md">
-      <div className="container mx-auto px-4">
-        <div className="flex justify-between items-center py-4">
-          <Link to="/dashboard" className="flex items-center space-x-2">
-            <GraduationCap size={28} />
-            <span className="text-xl font-bold">ScriptSense</span>
+    <nav className="bg-slate-800 text-white">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="flex justify-between items-center h-14">
+          {/* Brand */}
+          <Link to="/dashboard" className="flex items-center gap-2">
+            <GraduationCap size={24} className="text-blue-400" />
+            <span className="text-lg font-bold tracking-tight">ScriptSense</span>
           </Link>
 
           {/* Desktop menu */}
-          <div className="hidden md:flex items-center space-x-8">
-            <Link to="/dashboard" className="hover:text-blue-200 transition-colors">
+          <div className="hidden md:flex items-center gap-4">
+            <Link
+              to="/dashboard"
+              className="px-3 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors"
+            >
               Dashboard
             </Link>
-            <div className="flex items-center space-x-2">
-              <span className="text-blue-200">{usn}</span>
-              <button 
+            <div className="flex items-center gap-3 ml-2 pl-4 border-l border-slate-600">
+              <span className="text-sm text-slate-400">{usn}</span>
+              <button
                 onClick={handleLogout}
-                className="flex items-center space-x-1 bg-blue-800 hover:bg-blue-900 px-3 py-2 rounded transition-colors"
+                className="flex items-center gap-1.5 text-sm font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-md transition-colors"
               >
-                <LogOut size={16} />
-                <span>Logout</span>
+                <LogOut size={14} />
+                Logout
               </button>
             </div>
           </div>
 
           {/* Mobile menu button */}
-          <button 
-            className="md:hidden text-white"
+          <button
+            className="md:hidden text-slate-300 hover:text-white"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
           >
-            {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            {isMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
       </div>
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden bg-blue-800 pb-4 px-4">
-          <Link 
-            to="/dashboard" 
-            className="block py-2 hover:text-blue-200 transition-colors"
+        <div className="md:hidden border-t border-slate-700 bg-slate-800 pb-3 px-4">
+          <Link
+            to="/dashboard"
+            className="block px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700/50 mt-1"
             onClick={() => setIsMenuOpen(false)}
           >
             Dashboard
           </Link>
-          <div className="py-2 border-t border-blue-700 mt-2">
-            <p className="text-blue-200 mb-2">{usn}</p>
-            <button 
+          <div className="mt-2 pt-2 border-t border-slate-700">
+            <p className="text-sm text-slate-400 px-3 mb-2">{usn}</p>
+            <button
               onClick={handleLogout}
-              className="flex items-center space-x-2 bg-blue-900 hover:bg-blue-950 px-3 py-2 rounded w-full"
+              className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700/50"
             >
-              <LogOut size={16} />
-              <span>Logout</span>
+              <LogOut size={14} />
+              Logout
             </button>
           </div>
         </div>

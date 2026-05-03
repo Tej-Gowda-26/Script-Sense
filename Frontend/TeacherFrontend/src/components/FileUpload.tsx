@@ -29,14 +29,11 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   const handleFiles = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
-
     const fileArray = Array.from(selectedFiles);
-
     if (fileArray.length < minFiles || fileArray.length > maxFiles) {
       alert(`Please select between ${minFiles} and ${maxFiles} files.`);
       return;
     }
-
     onChange(fileArray);
   };
 
@@ -59,10 +56,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
     setDragActive(false);
   };
 
-  const handleClick = () => {
-    inputRef.current?.click();
-  };
-
   const removeFile = (index: number) => {
     const updated = files?.filter((_, i) => i !== index) || [];
     onChange(updated);
@@ -70,20 +63,20 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
   return (
     <div className={className}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
 
       <div
-        onClick={handleClick}
+        onClick={() => inputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
-        className={`relative cursor-pointer border-2 border-dashed rounded-lg p-6 text-center transition ${
-          dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
+        className={`relative cursor-pointer border-2 border-dashed rounded-lg p-5 text-center transition-colors ${
+          dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         }`}
       >
-        <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+        <Upload className="mx-auto h-6 w-6 text-gray-400 mb-1.5" />
         <p className="text-sm text-gray-600 font-medium">Click to upload or drag & drop</p>
-        {description && <p className="text-xs text-gray-500 mt-1">{description}</p>}
+        {description && <p className="text-xs text-gray-400 mt-1">{description}</p>}
         <input
           ref={inputRef}
           type="file"
@@ -95,11 +88,11 @@ const FileUpload: React.FC<FileUploadProps> = ({
       </div>
 
       {files && files.length > 0 && (
-        <div className="mt-4 space-y-2">
+        <div className="mt-3 space-y-1.5">
           {files.map((file, idx) => (
-            <div key={idx} className="flex items-center justify-between p-2 bg-gray-100 rounded">
-              <span className="text-sm text-gray-800 truncate max-w-[80%]">{file.name}</span>
-              <button onClick={() => removeFile(idx)} className="text-gray-500 hover:text-red-600">
+            <div key={idx} className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <span className="text-sm text-gray-700 truncate max-w-[85%]">{file.name}</span>
+              <button onClick={() => removeFile(idx)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>

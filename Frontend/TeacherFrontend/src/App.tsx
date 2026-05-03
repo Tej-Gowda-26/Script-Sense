@@ -8,7 +8,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
-      <main className="container mx-auto px-4 pb-12 pt-6">
+      <main className="container mx-auto px-4 pb-12 pt-8 max-w-6xl">
         <Routes>
           <Route path="/"                element={<UploadQuestionPage />} />
           <Route path="/upload_answer"   element={<UploadAnswerPage />} />

@@ -1,49 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    @apply bg-gray-50 text-gray-800 antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-medium leading-tight;
+    @apply font-semibold leading-tight tracking-tight;
   }
 }
 
 @layer components {
+  /* Layout */
   .container {
-    @apply px-4 mx-auto max-w-7xl;
+    @apply px-4 mx-auto max-w-6xl;
   }
-  
-  /* Form Styling */
+
+  /* Page header */
+  .page-header {
+    @apply mb-8;
+  }
+  .page-header h2 {
+    @apply text-2xl font-bold text-gray-900;
+  }
+  .page-header p {
+    @apply text-sm text-gray-500 mt-1;
+  }
+
+  /* Cards */
+  .section-card {
+    @apply bg-white rounded-lg border border-gray-200 p-6;
+  }
+
+  /* Badges */
+  .status-badge {
+    @apply inline-flex items-center text-xs font-medium rounded-full px-2.5 py-0.5;
+  }
+
+  /* Forms */
   input[type="text"],
   input[type="number"],
   input[type="email"],
   input[type="password"],
   textarea,
   select {
-    @apply w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition-colors duration-200;
-  }
-  
-  /* Animations */
-  .fade-in {
-    animation: fadeIn 0.5s ease-in-out;
-  }
-  
-  .slide-in {
-    animation: slideIn 0.3s ease-out;
-  }
-  
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  
-  @keyframes slideIn {
-    from { transform: translateY(10px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+    @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+           focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none
+           transition-colors duration-150;
   }
 }

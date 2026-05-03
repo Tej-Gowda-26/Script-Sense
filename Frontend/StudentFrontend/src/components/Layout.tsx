@@ -11,9 +11,9 @@ const Layout: React.FC = () => {
           <Outlet />
         </div>
       </main>
-      <footer className="bg-gray-800 text-white py-6">
-        <div className="container mx-auto px-4 text-center">
-          <p>© 2025 ScriptSense. All rights reserved.</p>
+      <footer className="bg-slate-800 text-slate-400 py-4">
+        <div className="container mx-auto px-4 text-center text-sm">
+          <p>© 2026 ScriptSense. All rights reserved.</p>
         </div>
       </footer>
     </div>

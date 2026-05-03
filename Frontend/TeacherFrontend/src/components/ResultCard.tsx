@@ -6,7 +6,7 @@ type ResultItemProps = {
   score: number;
   maxScore: number;
   feedback: string;
-  diagramFeedback?: string; // Added for diagram evaluation
+  diagramFeedback?: string;
 };
 
 const ResultItem: React.FC<ResultItemProps> = ({
@@ -17,56 +17,57 @@ const ResultItem: React.FC<ResultItemProps> = ({
   feedback,
   diagramFeedback
 }) => {
-  // Calculate percentage for score bar
-  const percentage = (score / maxScore) * 100;
-  
-  // Determine color based on score
-  const getScoreColor = () => {
-    if (percentage >= 80) return 'bg-green-500';
-    if (percentage >= 60) return 'bg-blue-500';
-    if (percentage >= 40) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
+  const percentage = maxScore > 0 ? (score / maxScore) * 100 : 0;
+
+  const barColor =
+    percentage >= 80 ? 'bg-green-500' :
+    percentage >= 60 ? 'bg-blue-500' :
+    percentage >= 40 ? 'bg-yellow-500' : 'bg-red-500';
+
+  const scoreColor = percentage >= 60 ? 'text-green-600' : 'text-red-600';
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-5 transition-all hover:shadow-md">
+    <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
+      {/* Header row */}
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-lg font-semibold text-gray-900">Question {questionNumber}</h3>
-        <span className="text-lg font-semibold">
-          <span className={percentage >= 60 ? 'text-green-600' : 'text-red-600'}>
-            {score}
-          </span>
-          <span className="text-gray-600">/{maxScore}</span>
+        <h3 className="text-base font-semibold text-gray-900">Question {questionNumber}</h3>
+        <span className="text-base font-semibold">
+          <span className={scoreColor}>{score}</span>
+          <span className="text-gray-400">/{maxScore}</span>
         </span>
       </div>
-      
-      <div className="mb-4">
-        <p className="text-sm text-gray-600 mb-1">Question:</p>
-        <p className="text-gray-800">{question}</p>
+
+      {/* Question */}
+      <div className="mb-3">
+        <p className="text-sm text-gray-500 mb-1">Question</p>
+        <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded-md">{question}</p>
       </div>
-      
-      <div className="mb-4">
-        <div className="flex justify-between text-sm mb-1">
-          <span className="text-gray-600">Score</span>
-          <span className="font-medium">{percentage}%</span>
+
+      {/* Score bar */}
+      <div className="mb-3">
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Score</span>
+          <span className="font-medium">{percentage.toFixed(0)}%</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
-          <div 
-            className={`h-2.5 rounded-full ${getScoreColor()}`} 
+        <div className="w-full bg-gray-100 rounded-full h-1.5">
+          <div
+            className={`h-1.5 rounded-full ${barColor}`}
             style={{ width: `${percentage}%` }}
           ></div>
         </div>
       </div>
-      
+
+      {/* Feedback */}
       <div>
-        <p className="text-sm text-gray-600 mb-1">Feedback:</p>
-        <p className="text-gray-800 bg-gray-50 p-3 rounded">{feedback}</p>
+        <p className="text-sm text-gray-500 mb-1">Feedback</p>
+        <p className="text-sm text-gray-800 bg-blue-50 p-3 rounded-md border-l-3 border-blue-500">{feedback}</p>
       </div>
-      
+
+      {/* Diagram feedback */}
       {diagramFeedback && (
-        <div className="mt-4">
-          <p className="text-sm text-gray-600 mb-1">Diagram Feedback:</p>
-          <p className="text-gray-800 bg-gray-50 p-3 rounded border-l-4 border-blue-500">{diagramFeedback}</p>
+        <div className="mt-3">
+          <p className="text-sm text-gray-500 mb-1">Diagram Feedback</p>
+          <p className="text-sm text-gray-800 bg-amber-50 p-3 rounded-md border-l-3 border-amber-500">{diagramFeedback}</p>
         </div>
       )}
     </div>

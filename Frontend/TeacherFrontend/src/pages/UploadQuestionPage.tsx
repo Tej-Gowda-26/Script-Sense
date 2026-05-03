@@ -359,34 +359,32 @@ Return ONLY the raw JSON object, no markdown, no extra text.
 
   return (
     <div className="max-w-3xl mx-auto">
-      <div className="mb-6">
-        <div className="flex items-center mb-2">
-          <h2 className="text-2xl font-bold text-gray-800">
-            {step === 1 ? 'Upload Question Paper' : 'Review Questions'}
-          </h2>
+      {/* Page header */}
+      <div className="page-header">
+        <h2>{step === 1 ? 'Upload Question Paper' : 'Review Questions'}</h2>
+        <p>{step === 1 ? 'Upload an image of the question paper to extract questions.' : 'Review extracted questions before saving.'}</p>
+      </div>
+
+      {/* Step indicator */}
+      <div className="flex items-center mb-6">
+        <div className="flex items-center">
+          <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+            {step > 1 ? <CheckCircle className="h-4 w-4" /> : '1'}
+          </div>
+          <span className={`ml-2 text-sm font-medium ${step >= 1 ? 'text-gray-900' : 'text-gray-400'}`}>Upload</span>
         </div>
-        <div className="flex mb-8">
-          <div className="flex items-center">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${step >= 1 ? 'bg-blue-600' : 'bg-gray-200'}`}>
-              <CheckCircle className={`h-5 w-5 ${step >= 1 ? 'text-white' : 'text-gray-500'}`} />
-            </div>
-            <span className={`ml-2 text-sm font-medium ${step >= 1 ? 'text-blue-600' : 'text-gray-500'}`}>Upload</span>
-          </div>
-          <div className={`ml-2 mr-2 h-0.5 w-16 self-center ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
-          <div className="flex items-center">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`}>
-              <span className={`text-sm font-medium ${step >= 2 ? 'text-white' : 'text-gray-500'}`}>2</span>
-            </div>
-            <span className={`ml-2 text-sm font-medium ${step >= 2 ? 'text-blue-600' : 'text-gray-500'}`}>Review & Submit</span>
-          </div>
+        <div className={`mx-3 h-px w-12 ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+        <div className="flex items-center">
+          <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'}`}>2</div>
+          <span className={`ml-2 text-sm font-medium ${step >= 2 ? 'text-gray-900' : 'text-gray-400'}`}>Review & Save</span>
         </div>
       </div>
 
       {step === 1 && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <Input label="Subject Name" value={subjectName} onChange={setSubjectName} placeholder="e.g. Mathematics" />
-            <Input label="Type of Exam" value={examType} onChange={setExamType} placeholder="e.g. Final Term" />
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+            <Input label="Subject Name" value={subjectName} onChange={setSubjectName} placeholder="e.g. Database Systems" />
+            <Input label="Type of Exam" value={examType} onChange={setExamType} placeholder="e.g. CE/SEE" />
           </div>
 
           <Input
@@ -414,7 +412,7 @@ Return ONLY the raw JSON object, no markdown, no extra text.
             )}
           </div>
 
-          <div className="flex justify-end mt-8">
+          <div className="flex justify-end mt-6">
             <Button
               onClick={extractQuestions}
               disabled={!numQuestions || !subjectName || !examType || !questionPaper || isLoading}
@@ -429,8 +427,8 @@ Return ONLY the raw JSON object, no markdown, no extra text.
       )}
 
       {step === 2 && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h3 className="text-xl font-semibold text-gray-800 mb-4">Extracted Questions</h3>
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Extracted Questions</h3>
           <div className="space-y-4">
             {Object.entries(extractedQuestions).map(([qNum, { question, marks }]) => (
               <QuestionItem
@@ -444,7 +442,7 @@ Return ONLY the raw JSON object, no markdown, no extra text.
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mt-6 pt-4 border-t border-gray-100">
             <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
             <div className="flex gap-4">
               <Button variant="danger" onClick={resetForm}>Reset</Button>
@@ -475,19 +473,19 @@ const Input = ({
   type?: string;
 }) => (
   <div>
-    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
     <input
       type={type}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5"
+      className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 focus:outline-none"
     />
   </div>
 );
 
 const ErrorBox = ({ message }: { message: string }) => (
-  <div className="mt-4 p-4 bg-red-50 rounded-md border border-red-200 text-red-700">{message}</div>
+  <div className="mt-4 px-4 py-3 bg-red-50 rounded-lg border border-red-200 text-red-700 text-sm">{message}</div>
 );
 
 export default UploadQuestionPage;

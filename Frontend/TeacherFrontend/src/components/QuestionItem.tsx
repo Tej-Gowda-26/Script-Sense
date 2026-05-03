@@ -16,7 +16,6 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
   requiresDiagram,
   onDiagramUpload,
 }) => {
-  // Start expanded so the teacher immediately sees the question text
   const [isExpanded, setIsExpanded] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
@@ -40,25 +39,24 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
 
-      {/* ── Header row (always visible) ── */}
+      {/* Header row */}
       <div
-        className="px-5 py-4 cursor-pointer flex items-start justify-between gap-3"
+        className="px-5 py-3.5 cursor-pointer flex items-center justify-between gap-3"
         onClick={() => setIsExpanded(v => !v)}
       >
-        <div className="flex items-center gap-3 flex-wrap">
-          <h3 className="text-base font-semibold text-gray-900 leading-snug">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h3 className="text-sm font-semibold text-gray-900">
             Question {questionNum}
           </h3>
-          <span className="inline-flex items-center text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
+          <span className="status-badge text-blue-700 bg-blue-50 border border-blue-200">
             {marks} marks
           </span>
 
-          {/* Diagram badge — always visible so teacher knows at a glance */}
           {requiresDiagram && (
             <span
-              className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2 py-0.5 ${
+              className={`status-badge gap-1 ${
                 uploaded
                   ? 'bg-green-50 text-green-700 border border-green-200'
                   : 'bg-amber-50 text-amber-700 border border-amber-200'
@@ -73,30 +71,26 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
           )}
         </div>
 
-        {/* Collapse toggle */}
         <button
-          className="flex-shrink-0 text-gray-400 hover:text-gray-600 mt-0.5"
+          className="flex-shrink-0 text-gray-400 hover:text-gray-600"
           onClick={e => { e.stopPropagation(); setIsExpanded(v => !v); }}
           title={isExpanded ? 'Collapse' : 'Expand'}
         >
           {isExpanded
-            ? <ChevronUp className="h-5 w-5" />
-            : <ChevronDown className="h-5 w-5" />}
+            ? <ChevronUp className="h-4 w-4" />
+            : <ChevronDown className="h-4 w-4" />}
         </button>
       </div>
 
-      {/* ── Expandable body ── */}
+      {/* Expandable body */}
       {isExpanded && (
-        <div className="px-5 pb-5 border-t border-gray-100">
-
-          {/* Question text — always readable */}
-          <p className="text-gray-700 text-sm leading-relaxed pt-4 pb-3">
+        <div className="px-5 pb-4 border-t border-gray-100">
+          <p className="text-sm text-gray-700 leading-relaxed pt-3 pb-2">
             {questionText}
           </p>
 
-          {/* Diagram upload — always shown if required, no extra click needed */}
           {requiresDiagram && (
-            <div className="mt-1 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="mt-2 p-4 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <ImagePlus className="h-4 w-4 text-amber-600" />
                 <span className="text-sm font-semibold text-amber-800">
@@ -121,7 +115,7 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
                   <img
                     src={previewUrl}
                     alt={`Diagram for Q${questionNum}`}
-                    className="max-w-full max-h-64 rounded border object-contain"
+                    className="max-w-full max-h-48 rounded border object-contain"
                   />
                 </div>
               )}
