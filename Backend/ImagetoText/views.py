@@ -325,7 +325,12 @@ def process_exam_images(request):
                     diagram_count += 1
                     logger.info(f"Q{qno}: Student diagram located — visual grading enabled")
                 else:
-                    logger.info(f"Q{qno}: No student diagram found — falling back to text-only grading")
+                    # Always pass reference_image_b64 even when no student diagram is found.
+                    # grade_questions() uses has_ref_diagram to trigger the penalty policy
+                    # (40% deduction for missing diagram on theory+diagram questions).
+                    # Without this, the policy is bypassed and the student gets full marks.
+                    q['reference_image_b64'] = ref_b64
+                    logger.info(f"Q{qno}: No student diagram found — reference passed so grader can apply penalty")
         if diagram_count:
             logger.info(f"Visual grading enabled for {diagram_count} question(s)")
 
