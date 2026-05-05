@@ -1,14 +1,13 @@
 import base64
 import logging
-import requests
 import re
+import json
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from groq import Groq
 from pymongo import MongoClient
-import json
 
 # RAG utility — imported directly to avoid an extra HTTP round-trip
 try:
@@ -24,11 +23,23 @@ except Exception:
     def grade_questions(questions, default_total=None):
         return []
 
-# Setup logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+# Direct DB save — replaces the old internal HTTP self-call
+try:
+    from Student.views import save_student_feedback
+except Exception:
+    def save_student_feedback(payload):
+        return False, 'save_student_feedback unavailable'
 
-# Setup MongoDB client (ensure this is created once globally)
+# Use Django's logger — do NOT call logging.basicConfig() inside Django apps
+logger = logging.getLogger(__name__)
+
+# OCR model chain: tried in order when rate-limited (same strategy as Evaluate)
+_OCR_MODEL_CHAIN = [
+    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+]
+
+# MongoDB client — created once at module level
 mongo_client = MongoClient(settings.MONGO_URI)
 db = mongo_client['ScriptSense']
 questions_collection = db['QuestionPaper']
@@ -115,11 +126,25 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
             
             break
     
-    # If no pattern matched, send everything as answer for the first DB question
+    # If no pattern matched, distribute text proportionally across all questions
     if not found_answers:
-        logger.warning("No question markers found, attempting intelligent split...")
-        first_key = sorted(db_questions.keys(), key=_sort_key)[0] if db_questions else '1'
-        found_answers[first_key] = [extracted_text]
+        logger.warning(
+            "No question markers found in OCR output — distributing text across all questions. "
+            "This usually means the OCR did not produce question labels; results may be inaccurate."
+        )
+        sorted_keys = sorted(db_questions.keys(), key=_sort_key)
+        if len(sorted_keys) == 1:
+            # Only one question — put everything there
+            found_answers[sorted_keys[0]] = [extracted_text]
+        else:
+            # Split the text into roughly equal segments, one per question
+            lines = [l for l in extracted_text.splitlines() if l.strip()]
+            chunk_size = max(1, len(lines) // len(sorted_keys))
+            for i, key in enumerate(sorted_keys):
+                start = i * chunk_size
+                end   = start + chunk_size if i < len(sorted_keys) - 1 else len(lines)
+                chunk = "\n".join(lines[start:end]).strip()
+                found_answers[key] = [chunk] if chunk else []
     
     # Build result — preserve natural question order
     result = []
@@ -144,7 +169,12 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
 
 
 def extract_text_from_images(base64_images):
-    client = Groq(api_key=settings.GROQ_API_KEY)
+    """Run OCR on a list of base64 images using the Groq vision model.
+
+    Tries each model in _OCR_MODEL_CHAIN in order so a rate-limited primary
+    model does not cause a hard failure.
+    """
+    groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
     prompt = (
         "Extract only the visible text from these images, and organize it by question number.\n"
@@ -168,30 +198,44 @@ def extract_text_from_images(base64_images):
             "image_url": {"url": f"data:image/png;base64,{base64_img}"}
         })
 
-    logger.info("Sending images to Groq API for text extraction...")
+    last_error = None
+    for model_name in _OCR_MODEL_CHAIN:
+        try:
+            logger.info(f"OCR: trying model '{model_name}' for {len(base64_images)} image(s)")
+            response = groq_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": message_content}],
+                temperature=0.2,
+                top_p=1,
+                stream=False,
+            )
+            logger.info(f"OCR: success with model '{model_name}'")
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            # Rate-limit or quota → try next model; auth/network → raise immediately
+            if any(k in err_str for k in ('rate_limit', '429', 'quota', 'tokens per day')):
+                logger.warning(f"OCR [{model_name}]: rate-limited — trying next model. Detail: {e}")
+                continue
+            logger.error(f"OCR [{model_name}]: unrecoverable error: {e}")
+            raise
 
-    response = client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
-        messages=[{"role": "user", "content": message_content}],
-        temperature=0.2,
-        top_p=1,
-        stream=False
-    )
-
-    logger.info("Received response from Groq API.")
-    return response.choices[0].message.content
+    raise RuntimeError(f"All OCR models exhausted. Last error: {last_error}")
 
 
-def trigger_another_app2(payload):
-    """POST graded feedback to the student app."""
-    try:
-        logger.info(f"Triggering student app at {settings.OTHER_APP_URL} with payload.")
-        response = requests.post(settings.OTHER_APP_URL, json=payload, timeout=10)
-        logger.info(f"Received response from student app: status {response.status_code}")
-        return response.status_code, response.text
-    except requests.RequestException as e:
-        logger.error(f"Error triggering student app: {e}")
-        return 500, str(e)
+def _save_feedback_direct(payload: dict) -> tuple:
+    """Save graded feedback directly via save_student_feedback().
+
+    Replaces the old internal HTTP POST to /student/feedback/, eliminating
+    potential deadlocks in single-worker setups and reducing latency.
+    """
+    ok, msg = save_student_feedback(payload)
+    if ok:
+        logger.info("Feedback persisted via save_student_feedback()")
+        return 200, msg
+    logger.error(f"save_student_feedback() failed: {msg}")
+    return 500, msg
 
 
 def get_reference_image_b64(subject: str, exam_type: str, qno) -> str:
@@ -225,6 +269,11 @@ def find_student_diagram_page(base64_images: list, question_text: str, qno) -> s
     """
     if not base64_images:
         return ""
+
+    # Short-circuit: only one page uploaded — it must be the diagram page
+    if len(base64_images) == 1:
+        logger.info(f"Q{qno}: Single-page submission — skipping Groq diagram detection")
+        return base64_images[0]
 
     groq_client = Groq(api_key=settings.GROQ_API_KEY)
     n = len(base64_images)
@@ -311,10 +360,9 @@ def process_exam_images(request):
         else:
             logger.info("RAG not enabled for this submission (no index_file/meta_file provided)")
 
-        # --- Diagram enrichment: attach reference + student images for visual grading ---
         diagram_count = 0
         for q in refined_payload:
-            qno = q.get('qno')
+            qno     = q.get('qno')
             ref_b64 = get_reference_image_b64(subject, exam_type, qno)
             if ref_b64:
                 logger.info(f"Q{qno}: Reference diagram found — locating student diagram page")
@@ -325,12 +373,10 @@ def process_exam_images(request):
                     diagram_count += 1
                     logger.info(f"Q{qno}: Student diagram located — visual grading enabled")
                 else:
-                    # Always pass reference_image_b64 even when no student diagram is found.
-                    # grade_questions() uses has_ref_diagram to trigger the penalty policy
-                    # (40% deduction for missing diagram on theory+diagram questions).
-                    # Without this, the policy is bypassed and the student gets full marks.
+                    # Pass reference_image_b64 even without a student diagram so the
+                    # penalty policy (40 % deduction) is triggered inside grade_questions().
                     q['reference_image_b64'] = ref_b64
-                    logger.info(f"Q{qno}: No student diagram found — reference passed so grader can apply penalty")
+                    logger.info(f"Q{qno}: No student diagram found — penalty policy will apply")
         if diagram_count:
             logger.info(f"Visual grading enabled for {diagram_count} question(s)")
 
@@ -343,11 +389,10 @@ def process_exam_images(request):
         
         logger.info(f"Payload prepared: {len(refined_payload)} questions, RAG={'yes' if use_rag else 'no'}")
 
-        # --- Call grading directly (no HTTP) to avoid self-call deadlock ---
-        logger.info("Calling grade_questions() directly...")
+        logger.info("Calling grade_questions()...")
         grading_results = grade_questions(refined_payload, default_total=int(total) if total else 10)
-        # If a question has its own total_marks from DB, grade_questions() will use it;
-        # default_total is the fallback for old records without per-question marks.
+        # grade_questions() uses per-question total_marks from DB when available;
+        # default_total is the fallback for records without stored marks.
         response_data   = {'results': grading_results}
         response_text   = json.dumps(response_data)
         logger.info(f"Grading complete: {len(grading_results)} results")
@@ -444,11 +489,11 @@ def process_exam_images(request):
 
         logger.info(f"Student payload built: {len(feedback_list)} feedbacks, {len(base64_images)} sheet image(s)")
         
-        status, student_log = trigger_another_app2(student_payload)
-    
+        status, student_log = _save_feedback_direct(student_payload)
+
         if status != 200:
-            logger.error(f"Failed to notify student app, status: {status}, details: {student_log}")
-            return JsonResponse({'error': 'Failed to notify student app', 'details': student_log}, status=status)
+            logger.error(f"Failed to save feedback, status: {status}, details: {student_log}")
+            return JsonResponse({'error': 'Failed to save student feedback', 'details': student_log}, status=status)
         
         logger.info(f"Student log: {student_log}")
 

@@ -9,10 +9,12 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Max RAG context characters sent per question (keeps prompts within Groq token limits)
+# Max RAG context characters injected per question prompt
 MAX_RAG_CHARS = 4000
-# Delay between sequential Groq calls to stay under tokens-per-minute limits
-INTER_QUESTION_DELAY = 0.6   # seconds
+
+# Inter-question delays — adaptive based on whether the previous call hit a rate limit
+INTER_QUESTION_DELAY_NORMAL    = 0.3   # seconds — normal operation
+INTER_QUESTION_DELAY_AFTER_429 = 0.6   # seconds — one question after a TPM 429 hit
 # Model fallback chain — tried in order when a rate limit is hit
 # Primary: large, high quality. Fallback: smaller, 5× higher daily quota.
 # Model chain for text-only grading (high quality text models)
@@ -21,9 +23,8 @@ GROQ_MODEL_CHAIN = [
     "llama-3.1-8b-instant",
 ]
 
-# Model chain for visual (diagram) grading — MUST be vision-capable models.
-# Only llama-4-scout is available as a vision model on Groq's on-demand tier.
-# If it's exhausted the grader falls back to text-only (see grade_questions).
+# Vision model chain — must be vision-capable; used for diagram grading.
+# Falls back to text-only if exhausted (see grade_questions).
 GROQ_VISION_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
@@ -38,6 +39,21 @@ _DIAGRAM_ONLY_STARTERS = (
     'represent diagrammatically', 'show the figure', 'label the',
     'make a diagram', 'prepare a neat sketch', 'prepare a neat diagram',
 )
+
+
+def _parse_retry_after(err_str: str, default: float = 12.0) -> float:
+    """Extract the wait time (seconds) from a Groq 429 error message.
+
+    Groq 429 bodies include text like "Please try again in 9.888s" or "1m30s".
+    Returns the parsed duration plus a 2-second safety buffer, or *default* if
+    the pattern is absent.
+    """
+    m = re.search(r'try again in\s+(?:(\d+)m)?\s*(?:([\d.]+)s)?', err_str, re.IGNORECASE)
+    if m:
+        total = float(m.group(1) or 0) * 60 + float(m.group(2) or 0)
+        if total > 0:
+            return total + 2.0
+    return default
 
 
 def _is_diagram_only(question_text: str) -> bool:
@@ -166,6 +182,7 @@ def grade_questions(questions: list, default_total=None) -> list:
     evaluate_answer JSON response.
     """
     results = []
+    _rate_limited_last = False   # tracks whether the previous question hit a TPM 429
 
     for idx, q in enumerate(questions):
         question          = q.get('question')
@@ -255,7 +272,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                         'used_rag_reference': False,
                     })
                     if idx < len(questions) - 1:
-                        time.sleep(INTER_QUESTION_DELAY)
+                        time.sleep(INTER_QUESTION_DELAY_NORMAL)
                     continue
                 else:
                     # Diagram present → grade visually
@@ -362,9 +379,14 @@ def grade_questions(questions: list, default_total=None) -> list:
                 continue
 
             if is_tpm:
-                # Per-minute rate limit — short wait then retry SAME model (not fallback)
-                logger.warning(f"Q{idx+1} [{model_name}]: TPM limit — waiting 5s")
-                time.sleep(5)
+                # Per-minute rate limit — wait the actual time the API specifies,
+                # then retry the SAME model (not fallback).
+                # Groq 429 bodies say "Please try again in 9.888s" — we parse
+                # that value so we don't retry too early and trigger another 429.
+                wait_secs = _parse_retry_after(err_str)
+                logger.warning(f"Q{idx+1} [{model_name}]: TPM limit — waiting {wait_secs:.1f}s (API-specified)")
+                _rate_limited_last = True
+                time.sleep(wait_secs)
                 try:
                     groq_response = requests.post(
                         "https://api.groq.com/openai/v1/chat/completions",
@@ -427,7 +449,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     groq_response = text_response
                     penalty_note  = (
                         (penalty_note + " " if penalty_note else "") +
-                        "[Diagram quality could not be assessed — vision model unavailable; graded on written text only.]"
+                        "Diagram quality could not be assessed — vision model unavailable; graded on written text only."
                     )
                     marks_scale = min(marks_scale, 0.6)  # cap at 60 % when diagram unverified
                     # Continue to the normal JSON-parsing block below
@@ -436,7 +458,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     if not any(r.get('index') == idx for r in results):
                         results.append({'index': idx, 'error': 'Groq API error after all retries (vision + text)'})
                     if idx < len(questions) - 1:
-                        time.sleep(INTER_QUESTION_DELAY)
+                        time.sleep(INTER_QUESTION_DELAY_NORMAL)
                     continue
             else:
                 # Error already appended inside the loop
@@ -444,7 +466,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     results.append({'index': idx, 'error': 'Groq API error after all retries'})
                 # Delay before next question even after failure
                 if idx < len(questions) - 1:
-                    time.sleep(INTER_QUESTION_DELAY)
+                    time.sleep(INTER_QUESTION_DELAY_NORMAL)
                 continue
 
         response = groq_response
@@ -461,7 +483,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     'response': content
                 })
                 if idx < len(questions) - 1:
-                    time.sleep(INTER_QUESTION_DELAY)
+                    time.sleep(INTER_QUESTION_DELAY_NORMAL)
                 continue
 
             grading = json.loads(json_match.group(0))
@@ -521,9 +543,12 @@ def grade_questions(questions: list, default_total=None) -> list:
                 '_raw_response':   content,
             })
 
-        # Small delay between questions to stay under Groq TPM limits
+        # Adaptive inter-question delay:
+        # Use the longer delay after a rate-limit hit; normal delay otherwise.
         if idx < len(questions) - 1:
-            time.sleep(INTER_QUESTION_DELAY)
+            delay = INTER_QUESTION_DELAY_AFTER_429 if _rate_limited_last else INTER_QUESTION_DELAY_NORMAL
+            _rate_limited_last = False   # reset after consuming the extended delay
+            time.sleep(delay)
 
     return results
 

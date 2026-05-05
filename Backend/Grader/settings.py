@@ -40,7 +40,8 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = []
 
-# Internal service URL — used to POST graded feedback to the student app
+# Legacy — was used to POST graded feedback via HTTP; replaced by save_student_feedback().
+# Retained for potential external or test use only.
 OTHER_APP_URL = os.environ.get('OTHER_APP_URL', 'http://127.0.0.1:8000/student/feedback/')
 
 

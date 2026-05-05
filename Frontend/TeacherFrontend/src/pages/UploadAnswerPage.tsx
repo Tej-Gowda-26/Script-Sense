@@ -161,6 +161,16 @@ const UploadAnswerPage = () => {
             score={res.score}
             maxScore={Number(res.total ?? 10)}
             feedback={res.feedback}
+            correctness_assessment={res.correctness_assessment}
+            completeness_assessment={res.completeness_assessment}
+            relevance_assessment={res.relevance_assessment}
+            depth_assessment={res.depth_assessment}
+            correct_points_found={res.correct_points_found}
+            missing_points={res.missing_points}
+            incorrect_points={res.incorrect_points}
+            partial_credit_reasoning={res.partial_credit_reasoning}
+            confidence={res.confidence}
+            used_rag_reference={res.used_rag_reference}
           />
         ))}
 

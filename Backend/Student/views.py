@@ -1,12 +1,13 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING
 import base64
 import json
 import logging
 import re
 import bcrypt
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,22 @@ client = MongoClient(settings.MONGO_URI)
 db = client['ScriptSense']
 collection = db['students']
 login_collection = db['Login']
+
+# ── Ensure indexes exist (runs once at import time; safe to call repeatedly) ──
+try:
+    collection.create_index(
+        [("usn", ASCENDING), ("subject", ASCENDING), ("exam_type", ASCENDING)],
+        name="usn_subject_examtype",
+        background=True,
+    )
+    login_collection.create_index(
+        [("usn", ASCENDING)],
+        name="usn_unique",
+        unique=True,
+        background=True,
+    )
+except Exception as _idx_err:
+    logger.warning(f"Index creation skipped (may already exist): {_idx_err}")
 
 # Validate USN format
 def validate_usn(usn):
@@ -149,6 +166,73 @@ def get_registered_subjects(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+def save_student_feedback(payload: dict) -> tuple[bool, str]:
+    """Persist graded feedback and answer sheets to MongoDB.
+
+    Called directly by ImagetoText (no HTTP round-trip).
+    Payload keys: usn, subject, exam_type, feedback (list), answer_sheets (list).
+    Returns (success, message).
+    """
+    try:
+        usn        = payload.get('usn', '')
+        subject    = payload.get('subject', '')
+        exam_type  = payload.get('exam_type', '')
+
+        if not validate_usn(usn):
+            return False, 'Invalid USN'
+
+        feedbacks_raw = payload.get('feedback')
+        if feedbacks_raw is None or not isinstance(feedbacks_raw, list):
+            return False, "'feedback' must be a non-null list"
+
+        feedbacks = [
+            {
+                'qno':     item.get('qno', item.get('index', 0) + 1),
+                'question': item['question'],
+                'answer':   item.get('answer', ''),
+                'feedback': item.get('feedback', ''),
+                'score':    item.get('score', 0),
+                'total':    int(item.get('total', 0)),
+                # Extended assessment fields
+                'correctness_assessment':   item.get('correctness_assessment', ''),
+                'completeness_assessment':  item.get('completeness_assessment', ''),
+                'relevance_assessment':     item.get('relevance_assessment', ''),
+                'depth_assessment':         item.get('depth_assessment', ''),
+                'correct_points_found':     item.get('correct_points_found', []),
+                'missing_points':           item.get('missing_points', []),
+                'incorrect_points':         item.get('incorrect_points', []),
+                'partial_credit_reasoning': item.get('partial_credit_reasoning', ''),
+                'confidence':               item.get('confidence', ''),
+                'used_rag_reference':       item.get('used_rag_reference', False),
+            }
+            for item in feedbacks_raw
+            if 'question' in item and 'feedback' in item
+        ]
+
+        answer_sheets = payload.get('answer_sheets', [])
+        if not isinstance(answer_sheets, list):
+            answer_sheets = []
+
+        collection.update_one(
+            {"usn": usn, "subject": subject, "exam_type": exam_type},
+            {"$set": {
+                "usn":          usn,
+                "subject":      subject,
+                "exam_type":    exam_type,
+                "feedbacks":    feedbacks,
+                "answer_sheets": answer_sheets,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }},
+            upsert=True,
+        )
+        logger.info(f"save_student_feedback: saved {len(feedbacks)} feedbacks for {usn}/{subject}/{exam_type}")
+        return True, 'Feedbacks saved successfully'
+
+    except Exception as e:
+        logger.error(f"save_student_feedback error: {e}", exc_info=True)
+        return False, str(e)
+
+
 # ---- Add or Get Feedback & Marks ----
 @csrf_exempt
 def add_or_get_feedback_marks(request):
@@ -159,69 +243,11 @@ def add_or_get_feedback_marks(request):
             subject = data['subject']
             exam_type = data['exam_type']  # e.g., 'CIE' or 'SEE'
             
-            # Get feedbacks from 'feedback' key — guard against missing/null value
-            feedbacks_raw = data.get('feedback')
-            if feedbacks_raw is None:
-                return JsonResponse({'error': "'feedback' key is required in the request body"}, status=400)
-            if not isinstance(feedbacks_raw, list):
-                return JsonResponse({'error': "'feedback' must be a list"}, status=400)
-
-# Only keep items that have 'question' and 'feedback'
-            feedbacks = [
-                {
-                    'qno':   item.get('qno', item.get('index', 0) + 1),
-                    'question': item['question'],
-                    'answer':   item.get('answer', ''),
-                    'feedback': item.get('feedback', ''),
-                    'score':    item.get('score', 0),
-                    'total':    int(item.get('total', 0)),
-                    # --- Extended assessment fields (new grading engine) ---
-                    'correctness_assessment':   item.get('correctness_assessment', ''),
-                    'completeness_assessment':  item.get('completeness_assessment', ''),
-                    'relevance_assessment':     item.get('relevance_assessment', ''),
-                    'depth_assessment':         item.get('depth_assessment', ''),
-                    'correct_points_found':     item.get('correct_points_found', []),
-                    'missing_points':           item.get('missing_points', []),
-                    'incorrect_points':         item.get('incorrect_points', []),
-                    'partial_credit_reasoning': item.get('partial_credit_reasoning', ''),
-                    'confidence':               item.get('confidence', ''),
-                    'used_rag_reference':       item.get('used_rag_reference', False),
-                }
-                for item in feedbacks_raw
-                if 'question' in item and 'feedback' in item
-            ]
-
-           
-            if not validate_usn(usn):
-                return JsonResponse({'error': 'Invalid USN'}, status=400)
-            if not isinstance(feedbacks, list):
-                return JsonResponse({'error': 'feedbacks must be a list'}, status=400)
-
-            # Find if a document already exists with the same usn, subject, and exam_type
-            query = {
-                "usn": usn,
-                "subject": subject,
-                "exam_type": exam_type
-            }
-
-            # Store answer_sheets alongside feedbacks (list of base64 image strings)
-            answer_sheets = data.get('answer_sheets', [])
-            if not isinstance(answer_sheets, list):
-                answer_sheets = []
-
-            # Update or insert the document with the new feedbacks array
-            update = {
-                "$set": {
-                    "usn": usn,
-                    "subject": subject,
-                    "exam_type": exam_type,
-                    "feedbacks": feedbacks,
-                    "answer_sheets": answer_sheets,
-                }
-            }
-
-            collection.update_one(query, update, upsert=True)
-            return JsonResponse({"message": "Feedbacks added successfully"})
+            # Delegate entirely to the shared helper
+            ok, msg = save_student_feedback(data)
+            if ok:
+                return JsonResponse({'message': msg})
+            return JsonResponse({'error': msg}, status=400)
 
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
