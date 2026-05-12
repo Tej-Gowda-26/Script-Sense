@@ -44,10 +44,22 @@ _DIAGRAM_ONLY_STARTERS = (
 def _parse_retry_after(err_str: str, default: float = 12.0) -> float:
     """Extract the wait time (seconds) from a Groq 429 error message.
 
-    Groq 429 bodies include text like "Please try again in 9.888s" or "1m30s".
-    Returns the parsed duration plus a 2-second safety buffer, or *default* if
-    the pattern is absent.
+    Groq 429 bodies include text like "Please try again in 365ms", "9.888s",
+    or "1m30s".  Returns the parsed duration plus a small safety buffer, or
+    *default* if the pattern is absent.
+
+    NOTE: "365ms" must NOT be mis-read as "365 minutes" — we check for the
+    explicit 'ms' suffix first, before the minutes pattern.
     """
+    # Check for milliseconds first (e.g. "365ms") to avoid confusing the "m"
+    # in "ms" with the minutes group in the pattern below.
+    ms_match = re.search(r'try again in\s+([\d.]+)\s*ms', err_str, re.IGNORECASE)
+    if ms_match:
+        wait_ms = float(ms_match.group(1))
+        # Add a 0.5 s safety buffer and clamp to a sane maximum (60 s)
+        return min(wait_ms / 1000.0 + 0.5, 60.0)
+
+    # Seconds / minutes pattern: "9.888s" or "1m30s"
     m = re.search(r'try again in\s+(?:(\d+)m)?\s*(?:([\d.]+)s)?', err_str, re.IGNORECASE)
     if m:
         total = float(m.group(1) or 0) * 60 + float(m.group(2) or 0)
