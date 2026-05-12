@@ -175,10 +175,12 @@ def ragify_pdf_view(request):
         if pdf_url:
             response = requests.get(pdf_url)
             response.raise_for_status()
-            pdf_stream = BytesIO(response.content)
+            pdf_bytes = response.content          # cache — avoids a second download
+            pdf_stream = BytesIO(pdf_bytes)
             base_name = os.path.join(TEXTBOOKS_DIR, get_filename_from_path_or_url(pdf_url))
         else:
-            pdf_stream = pdf_file.file
+            pdf_bytes = pdf_file.file.read()      # read once; seek back for PyPDF2
+            pdf_stream = BytesIO(pdf_bytes)
             base_name = os.path.join(TEXTBOOKS_DIR, os.path.splitext(pdf_file.name)[0])
 
         pages = load_pdf_from_stream(pdf_stream)
@@ -186,14 +188,8 @@ def ragify_pdf_view(request):
 
         # Save original PDF so it can be served back for viewing
         pdf_save_path = f"{base_name}.pdf"
-        if pdf_url:
-            with open(pdf_save_path, 'wb') as f:
-                f.write(requests.get(pdf_url).content)
-        else:
-            # Re-read from the uploaded file object (stream already consumed above)
-            pdf_file.file.seek(0)
-            with open(pdf_save_path, 'wb') as f:
-                f.write(pdf_file.file.read())
+        with open(pdf_save_path, 'wb') as f:
+            f.write(pdf_bytes)                    # reuse already-read bytes — no second fetch
 
         return JsonResponse({
             "status":     "success",

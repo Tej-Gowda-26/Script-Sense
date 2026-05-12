@@ -278,8 +278,8 @@ const SubjectDetail: React.FC = () => {
     }
   };
 
-  // Reset sheets cache when exam type changes
-  useEffect(() => { setSheets([]); }, [selectedExamType]);
+  // Reset sheets cache and close viewer when exam type changes
+  useEffect(() => { setSheets([]); setShowSheets(false); }, [selectedExamType]);
 
   const calculateTotalScore = () => {
     if (!feedbacks.length) return { earned: 0, total: 0 };
@@ -493,7 +493,7 @@ const SubjectDetail: React.FC = () => {
               ) : (
                 <>
                   <img
-                    src={`data:image/jpeg;base64,${sheets[sheetIdx]}`}
+                    src={`data:image/png;base64,${sheets[sheetIdx]}`}
                     alt={`Answer sheet page ${sheetIdx + 1}`}
                     className="max-h-[60vh] max-w-full object-contain"
                   />
@@ -528,7 +528,7 @@ const SubjectDetail: React.FC = () => {
                       i === sheetIdx ? 'border-blue-500' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <img src={`data:image/jpeg;base64,${s}`} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
+                    <img src={`data:image/png;base64,${s}`} alt={`Page ${i + 1}`} className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

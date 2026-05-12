@@ -35,6 +35,8 @@ except Exception as _idx_err:
 
 # Validate USN format
 def validate_usn(usn):
+    if not usn:
+        return None
     return re.match(r"^\d{2}ET[A-Z]{2}\d{3}\d{3}$", usn)
 
 @csrf_exempt
