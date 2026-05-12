@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # OCR model chain: tried in order when rate-limited (same strategy as Evaluate)
 _OCR_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "openai/gpt-oss-120b",
 ]
 
 # MongoDB client — created once at module level
