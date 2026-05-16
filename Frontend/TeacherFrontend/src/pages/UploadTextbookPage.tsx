@@ -212,7 +212,7 @@ const UploadTextbookPage = () => {
             disabled={!pdfFile || ragStatus === 'uploading'}
             isLoading={ragStatus === 'uploading'}
           >
-            {ragStatus === 'uploading' ? 'Indexing…' : 'Upload & Index'}
+            {ragStatus === 'uploading' ? 'Indexing…' : 'Upload'}
           </Button>
         </div>
 
