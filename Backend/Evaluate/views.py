@@ -205,14 +205,13 @@ def grade_questions(questions: list, default_total=None) -> list:
             retrieved_context = retrieved_context[:MAX_RAG_CHARS] + "\n... [context truncated]"
         total_marks       = q.get('total_marks') or default_total
 
-        # Diagram images
         ref_b64             = q.get('reference_image_b64', '')
         student_b64         = q.get('student_diagram_b64', '')
         has_ref_diagram     = bool(ref_b64)
         has_student_diagram = bool(student_b64)
-        has_diagram  = False   # resolved below after routing
+        has_diagram  = False   # resolved below during diagram routing
         marks_scale  = 1.0    # penalty multiplier (1.0 = no deduction)
-        penalty_note = ''     # appended to student feedback if marks are capped
+        penalty_note = ''     # appended to feedback when marks are capped
 
         if not question or not total_marks:
             results.append({
@@ -221,7 +220,7 @@ def grade_questions(questions: list, default_total=None) -> list:
             })
             continue
 
-        # --- Guard: empty / whitespace-only answer ---
+        # Guard: empty / whitespace-only answer
         answer_text_check = (
             ' '.join(answer).strip() if isinstance(answer, list) else str(answer).strip()
         )
@@ -253,14 +252,12 @@ def grade_questions(questions: list, default_total=None) -> list:
             results.append({'index': idx, 'error': 'total_marks must be an integer'})
             continue
 
-        # ── Diagram routing ──────────────────────────────────────────────────
-        # Determine: (a) whether question is diagram-only or theory+diagram,
-        # (b) what the student actually submitted, and (c) how to grade + penalise.
+        # Diagram routing: set grading mode and apply missing-component penalties.
         has_theory_answer = len(answer_text_check) > _HAS_THEORY_THRESHOLD
 
         if has_ref_diagram:
             if _is_diagram_only(question):
-                # ── Case A: question asks ONLY for a diagram ─────────────────
+                # Case A: diagram-only question
                 if not has_student_diagram:
                     # No diagram found → hard zero
                     logger.info(f"Q{idx+1}: Diagram-only question with no student diagram → 0 marks")
@@ -291,7 +288,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     has_diagram = True
 
             else:
-                # ── Case B: question requires BOTH theory AND diagram ─────────
+                # Case B: question requires both theory and diagram
                 if has_theory_answer and has_student_diagram:
                     # Both present → full multimodal grading
                     has_diagram = True
@@ -312,8 +309,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                     logger.info(f"Q{idx+1}: Diagram present but no theory → capping at 50% of marks")
 
                 # else: both absent — handled by the empty-answer guard above
-        # If no ref_diagram exists, has_diagram stays False → normal text grading
-        # ────────────────────────────────────────────────────────────────────────────
+        # No reference diagram → text-only grading (has_diagram remains False)
 
         user_prompt = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=has_diagram)
 
@@ -338,11 +334,9 @@ def grade_questions(questions: list, default_total=None) -> list:
         content = None
         groq_response = None
 
-        # Select model chain: vision-capable models for diagram questions,
-        # high-quality text models for text-only questions.
+        # Use vision chain for diagram questions, text chain for text-only.
         model_chain = GROQ_VISION_MODEL_CHAIN if has_diagram else GROQ_MODEL_CHAIN
 
-        # Try each model in the fallback chain
         for model_name in model_chain:
             payload = {
                 "model": model_name,
@@ -391,10 +385,8 @@ def grade_questions(questions: list, default_total=None) -> list:
                 continue
 
             if is_tpm:
-                # Per-minute rate limit — wait the actual time the API specifies,
-                # then retry the SAME model (not fallback).
-                # Groq 429 bodies say "Please try again in 9.888s" — we parse
-                # that value so we don't retry too early and trigger another 429.
+                # TPM hit — wait the API-specified duration, then retry the same model.
+                # Parsing the exact wait time avoids a second 429 on retry.
                 wait_secs = _parse_retry_after(err_str)
                 logger.warning(f"Q{idx+1} [{model_name}]: TPM limit — waiting {wait_secs:.1f}s (API-specified)")
                 _rate_limited_last = True
@@ -412,10 +404,8 @@ def grade_questions(questions: list, default_total=None) -> list:
                 groq_response = None
                 continue
 
-            # Any other non-200 error — try next model in chain rather than failing immediately
-            # (e.g. a 404 "model not found" should not silently drop the question)
-            is_model_error = groq_response.status_code in (404, 400)
-            if is_model_error:
+            # 400/404 errors (bad model, bad request) — try next model rather than dropping the question
+            if groq_response.status_code in (404, 400):
                 logger.warning(f"Q{idx+1} [{model_name}]: {groq_response.status_code} error — trying next model")
                 groq_response = None
                 continue
@@ -429,8 +419,7 @@ def grade_questions(questions: list, default_total=None) -> list:
             break
 
         if groq_response is None or groq_response.status_code != 200:
-            # If this was a vision attempt and the chain is exhausted,
-            # degrade gracefully to text-only rather than emitting a zero-score error.
+            # Vision chain exhausted — degrade to text-only rather than emitting a zero-score error.
             if has_diagram:
                 logger.warning(
                     f"Q{idx+1}: Vision model unavailable — retrying as text-only (diagram quality not assessed)"
@@ -565,9 +554,7 @@ def grade_questions(questions: list, default_total=None) -> list:
     return results
 
 
-# ---------------------------------------------------------------------------
-# HTTP endpoint — thin wrapper for external / testing use
-# ---------------------------------------------------------------------------
+# HTTP wrapper — delegates to grade_questions(); useful for external/test callers.
 @csrf_exempt
 def evaluate_answer(request):
     if request.method != 'POST':

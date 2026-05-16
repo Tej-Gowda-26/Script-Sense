@@ -48,7 +48,7 @@ const UploadAnswerPage = () => {
   const [showSheets, setShowSheets] = useState(false);
   const [sheetIdx, setSheetIdx] = useState(0);
 
-  // Create object URLs from uploaded File objects (revoked on cleanup)
+  // Revoke object URLs created from uploaded File objects when files change
   const sheetUrls = useMemo(
     () => images.map(file => URL.createObjectURL(file)),
     [images]
@@ -79,12 +79,10 @@ const UploadAnswerPage = () => {
       const formData = new FormData();
       formData.append('subject', subject);
       formData.append('exam_type', examType);
-      // Fallback total per question — backend uses per-question marks from MongoDB;
-      // this '10' only applies for legacy records that have no marks stored.
-      formData.append('total', '10');
+      formData.append('total', '10'); // fallback when no per-question marks are stored in DB
       formData.append('usn', usn);
 
-      // Forward RAG artifacts if available so the backend uses them for grading
+      // Forward RAG artifacts if the teacher indexed a textbook
       if (ragIndexFile && ragMetaFile) {
         formData.append('index_file', ragIndexFile);
         formData.append('meta_file', ragMetaFile);
@@ -204,12 +202,10 @@ const UploadAnswerPage = () => {
                 <span className="text-sm text-gray-400">/{totalPossible}</span>
               </p>
             </div>
-            {/* Percentage */}
             <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
               <p className="text-xs text-gray-500 mb-1.5">Percentage</p>
               <p className="text-2xl font-bold text-gray-900">{scorePercentage.toFixed(1)}%</p>
             </div>
-            {/* Total Questions */}
             <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
               <p className="text-xs text-gray-500 mb-1.5">Total Questions</p>
               <p className="text-2xl font-bold text-gray-900">{results.length}</p>
@@ -218,7 +214,7 @@ const UploadAnswerPage = () => {
         </div>
       </div>
 
-      {/* ── Answer Sheet Viewer Modal ── */}
+      {/* Answer Sheet Viewer Modal */}
       {showSheets && (
         <div
           className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
@@ -292,13 +288,11 @@ const UploadAnswerPage = () => {
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Page header */}
       <div className="page-header">
         <h2>Upload Answer Sheets</h2>
         <p>Upload images of student answer sheets for automated grading.</p>
       </div>
 
-      {/* Form card */}
       <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
           <div>

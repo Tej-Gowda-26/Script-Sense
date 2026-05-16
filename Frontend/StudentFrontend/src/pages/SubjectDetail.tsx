@@ -409,7 +409,7 @@ const SubjectDetail: React.FC = () => {
                   <div className="bg-white rounded-lg p-4 text-center shadow-sm flex flex-col items-center justify-center min-h-[96px]">
                     <p className="text-xs text-gray-500 mb-1.5">Score</p>
                     <p className="text-blue-700 font-bold flex items-baseline justify-center gap-0.5">
-                      <span className="text-2xl">{earned}</span>
+                      <span className="text-2xl">{earned.toFixed(1)}</span>
                       <span className="text-sm text-gray-400">/{total}</span>
                     </p>
                   </div>

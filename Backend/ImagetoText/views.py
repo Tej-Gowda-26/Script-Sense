@@ -23,7 +23,7 @@ except Exception:
     def grade_questions(questions, default_total=None):
         return []
 
-# Direct DB save — replaces the old internal HTTP self-call
+# Saves feedback directly — no HTTP round-trip, with a no-op fallback.
 try:
     from Student.views import save_student_feedback
 except Exception:
@@ -36,10 +36,9 @@ logger = logging.getLogger(__name__)
 # OCR model chain: tried in order when rate-limited (same strategy as Evaluate)
 _OCR_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
-    "openai/gpt-oss-120b",
+    "llama-3.2-11b-vision-preview",  # smaller vision model — higher quota, genuine fallback
 ]
 
-# MongoDB client — created once at module level
 mongo_client = MongoClient(settings.MONGO_URI)
 db = mongo_client['ScriptSense']
 questions_collection = db['QuestionPaper']
@@ -70,30 +69,27 @@ def _sort_key(qno):
 
 
 def parse_and_add_questions(extracted_text, subject, exam_type):
-    """Parse extracted text and match with questions from database"""
+    """Parse OCR-extracted text and pair each answer with its question from MongoDB."""
     
     logger.info(f"Parsing extracted text (length: {len(extracted_text)})")
     logger.info(f"First 500 chars: {extracted_text[:500]}")
     
-    # Get all questions from database
-    # sort by _id desc → always use the most recently uploaded question paper
     doc = questions_collection.find_one(
         {"subject": subject, "exam_type": exam_type},
-        sort=[("_id", -1)]
+        sort=[("_id", -1)]  # most-recent paper first
     )
     if not doc or 'questions' not in doc:
         logger.error(f"No questions found in DB for {subject}/{exam_type}")
         return []
     
-    # Use string keys throughout — qno is now "1", "2a", "2b", etc.
+    # qno stored as string: "1", "2a", "2b", etc.
     db_questions = {
         str(q['qno']): {'question': q['question'], 'marks': q.get('marks', None)}
         for q in doc['questions']
     }
     logger.info(f"Found {len(db_questions)} questions in DB: {sorted(db_questions.keys(), key=_sort_key)}")
-    
-    # Patterns ordered from most-specific to least-specific.
-    # Each group(1) captures the full qno string: "1", "2a", "2b", "3", etc.
+
+    # Patterns ordered most-specific first; group(1) captures the full qno ("1", "2a", etc.).
     patterns = [
         r'\[Q(\d+[a-zA-Z]?)\]',                # [Q1], [Q2a]
         r'Question\s*(\d+\s*[a-zA-Z]?)',       # Question 1, Question 2a, Question 2 a
@@ -126,18 +122,18 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
             
             break
     
-    # If no pattern matched, distribute text proportionally across all questions
+    # No pattern matched — distribute text proportionally across questions.
+    # OCR likely produced no question labels; results may be inaccurate.
     if not found_answers:
         logger.warning(
-            "No question markers found in OCR output — distributing text across all questions. "
-            "This usually means the OCR did not produce question labels; results may be inaccurate."
+            "No question markers found in OCR output — distributing text across all questions; "
+            "results may be inaccurate."
         )
         sorted_keys = sorted(db_questions.keys(), key=_sort_key)
         if len(sorted_keys) == 1:
-            # Only one question — put everything there
             found_answers[sorted_keys[0]] = [extracted_text]
         else:
-            # Split the text into roughly equal segments, one per question
+            # Split into roughly equal segments, one per question
             lines = [l for l in extracted_text.splitlines() if l.strip()]
             chunk_size = max(1, len(lines) // len(sorted_keys))
             for i, key in enumerate(sorted_keys):
@@ -169,10 +165,10 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
 
 
 def extract_text_from_images(base64_images):
-    """Run OCR on a list of base64 images using the Groq vision model.
+    """Run OCR on a list of base64 images using the Groq Vision API.
 
-    Tries each model in _OCR_MODEL_CHAIN in order so a rate-limited primary
-    model does not cause a hard failure.
+    Tries each model in _OCR_MODEL_CHAIN in order; continues on rate-limit
+    errors, raises immediately on any other error.
     """
     groq_client = Groq(api_key=settings.GROQ_API_KEY)
 
@@ -225,11 +221,7 @@ def extract_text_from_images(base64_images):
 
 
 def _save_feedback_direct(payload: dict) -> tuple:
-    """Save graded feedback directly via save_student_feedback().
-
-    Replaces the old internal HTTP POST to /student/feedback/, eliminating
-    potential deadlocks in single-worker setups and reducing latency.
-    """
+    """Call save_student_feedback() and return (http_status_code, message)."""
     ok, msg = save_student_feedback(payload)
     if ok:
         logger.info("Feedback persisted via save_student_feedback()")
@@ -239,9 +231,7 @@ def _save_feedback_direct(payload: dict) -> tuple:
 
 
 def get_reference_image_b64(subject: str, exam_type: str, qno) -> str:
-    """Fetch the reference diagram image for a question from MongoDB.
-    Returns a base64-encoded string, or empty string if no diagram exists.
-    """
+    """Return the reference diagram for a question as a base64 string, or '' if none exists."""
     try:
         doc = questions_collection.find_one(
             {"subject": subject, "exam_type": exam_type},
@@ -263,9 +253,10 @@ def get_reference_image_b64(subject: str, exam_type: str, qno) -> str:
 
 
 def find_student_diagram_page(base64_images: list, question_text: str, qno) -> str:
-    """Use Groq vision to identify which answer page contains the student's
-    diagram for the given question.
-    Returns the base64 string of that page, or empty string if not found.
+    """Use Groq Vision to find which uploaded page contains the student's diagram for qno.
+
+    Returns that page's base64 string, or '' if not found.
+    Short-circuits to the only page when len(base64_images) == 1.
     """
     if not base64_images:
         return ""
@@ -321,7 +312,7 @@ def process_exam_images(request):
     image_files = request.FILES.getlist('images')
     total       = request.POST.get('total')
     usn         = request.POST.get('usn')
-    # Optional RAG index paths — teacher frontend can pass these after /rag/pipeline/
+    # RAG artifacts — provided by teacher if a textbook was indexed via /rag/pipeline/
     index_file  = request.POST.get('index_file', '').strip()
     meta_file   = request.POST.get('meta_file', '').strip()
     use_rag     = bool(index_file and meta_file)

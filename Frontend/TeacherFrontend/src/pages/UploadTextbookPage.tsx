@@ -16,14 +16,13 @@ interface Textbook {
   uploadedAt: string;
 }
 
-// ── localStorage helpers ─────────────────────────────────────────────────────
-const LS_LIST = 'rag_textbooks';        // Textbook[]
-const LS_ACTIVE = 'rag_active_name';      // active textbook name
+const LS_LIST   = 'rag_textbooks';   // persisted list of all indexed textbooks
+const LS_ACTIVE = 'rag_active_name'; // name of the currently active textbook
 
-// Keys read by UploadAnswerPage — kept in sync with the active textbook
+// These three keys are read by UploadAnswerPage and kept in sync with the active textbook.
 const LS_INDEX = 'rag_index_file';
-const LS_META = 'rag_meta_file';
-const LS_PDF = 'rag_pdf_file';
+const LS_META  = 'rag_meta_file';
+const LS_PDF   = 'rag_pdf_file';
 
 function loadList(): Textbook[] {
   try { return JSON.parse(localStorage.getItem(LS_LIST) || '[]'); }
@@ -59,7 +58,7 @@ const UploadTextbookPage = () => {
   const [ragError, setRagError] = useState('');
   const [viewerBook, setViewerBook] = useState<Textbook | null>(null);
 
-  // Load from localStorage on mount (with legacy migration)
+  // Load from localStorage on mount; migrate legacy single-textbook entries.
   useEffect(() => {
     let list = loadList();
 
@@ -85,7 +84,6 @@ const UploadTextbookPage = () => {
     setActiveName(localStorage.getItem(LS_ACTIVE) || legacyName || '');
   }, []);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPdfFile(e.target.files?.[0] || null);
     setRagStatus('idle');

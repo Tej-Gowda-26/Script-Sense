@@ -14,7 +14,7 @@ question_papers_collection = db['QuestionPaper']
 @require_http_methods(["POST"])
 def upload_question_paper_json(request):
     try:
-        # ── 1. Parse request ────────────────────────────────────────────────
+        # 1. Parse and validate the request
         questions_json = request.POST.get('questions')
         if not questions_json:
             return JsonResponse({'error': 'Missing questions field.'}, status=400)
@@ -28,7 +28,7 @@ def upload_question_paper_json(request):
         if not exam_type or not subject:
             return JsonResponse({'error': 'Missing exam_type or subject field.'}, status=400)
 
-        # ── 2. Build processed questions list ───────────────────────────────
+        # 2. Build per-question documents
         processed_questions = []
 
         for q in questions:
@@ -52,7 +52,6 @@ def upload_question_paper_json(request):
                     'data':         Binary(image_file.read()),
                 }
 
-            # !! append INSIDE the for loop — one entry per question !!
             processed_questions.append({
                 'qno':      str(qno),   # stored as string: "1", "2a", "2b", …
                 'question': question_text,
@@ -60,9 +59,7 @@ def upload_question_paper_json(request):
                 'image':    image_data,
             })
 
-        # ── 3. Upsert into MongoDB ──────────────────────────────────────────
-        # replace_one + upsert=True keeps exactly ONE document per
-        # subject/exam_type so stale old versions never accumulate.
+        # 3. Upsert — one document per subject/exam_type; stale versions overwritten.
         result = question_papers_collection.replace_one(
             filter      = {'exam_type': exam_type, 'subject': subject},
             replacement = {

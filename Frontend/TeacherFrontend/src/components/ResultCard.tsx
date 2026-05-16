@@ -109,7 +109,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-5 mb-4">
-      {/* ── Header row ── */}
       <div className="flex justify-between items-start mb-3 gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-base font-semibold text-gray-900">Question {questionNumber}</h3>
@@ -127,13 +126,11 @@ const ResultItem: React.FC<ResultItemProps> = ({
         </span>
       </div>
 
-      {/* ── Question ── */}
       <div className="mb-3">
         <p className="text-sm text-gray-500 mb-1">Question</p>
         <p className="text-sm text-gray-800 bg-gray-50 p-3 rounded-md">{question}</p>
       </div>
 
-      {/* ── Score bar ── */}
       <div className="mb-3">
         <div className="flex justify-between text-xs text-gray-500 mb-1">
           <span>Score</span>
@@ -144,7 +141,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
         </div>
       </div>
 
-      {/* ── Feedback ── */}
       <div>
         <p className="text-sm text-gray-500 mb-1">Feedback</p>
         <p className="text-sm text-gray-800 bg-blue-50 p-3 rounded-md border-l-4 border-blue-400 leading-relaxed">
@@ -152,7 +148,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
         </p>
       </div>
 
-      {/* ── Diagram feedback ── */}
       {diagramFeedback && (
         <div className="mt-3">
           <p className="text-sm text-gray-500 mb-1">Diagram Feedback</p>
@@ -162,7 +157,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
         </div>
       )}
 
-      {/* ── Expand / collapse trigger ── */}
       {hasDetail && (
         <button
           onClick={() => setExpanded(v => !v)}
@@ -173,11 +167,8 @@ const ResultItem: React.FC<ResultItemProps> = ({
         </button>
       )}
 
-      {/* ── Detailed assessment panel ── */}
       {hasDetail && expanded && (
         <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
-
-          {/* Assessment pills */}
           {(correctness_assessment || completeness_assessment ||
             relevance_assessment   || depth_assessment) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -187,8 +178,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
               <AssessmentPill label="Depth"         text={depth_assessment} />
             </div>
           )}
-
-          {/* Point lists */}
           {(correct_points_found?.length  || missing_points?.length ||
             incorrect_points?.length) && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -212,8 +201,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
               />
             </div>
           )}
-
-          {/* Partial credit reasoning */}
           {partial_credit_reasoning && (
             <div className="bg-indigo-50 rounded-md px-3 py-2.5 border border-indigo-100">
               <p className="text-xs font-semibold text-indigo-700 mb-0.5">Partial credit reasoning</p>

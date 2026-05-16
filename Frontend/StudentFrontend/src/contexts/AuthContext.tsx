@@ -18,7 +18,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [usn, setUsn] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if user is already logged in (from localStorage)
     const storedUsn = localStorage.getItem('usn');
     if (storedUsn) {
       setIsAuthenticated(true);

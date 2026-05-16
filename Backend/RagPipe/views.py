@@ -33,9 +33,6 @@ TEXTBOOKS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 os.makedirs(TEXTBOOKS_DIR, exist_ok=True)
 
 
-# ---------------------------------------------------------------------------
-# Public utility — importable by other Django apps (no HTTP round-trip)
-# ---------------------------------------------------------------------------
 def get_rag_context(query: str, index_file: str, meta_file: str, top_k: int = 3) -> str:
     """Retrieve top-k relevant text chunks from a FAISS index for *query*.
 
@@ -77,7 +74,6 @@ def get_rag_context(query: str, index_file: str, meta_file: str, top_k: int = 3)
     except Exception:
         return ""
 
-# Utility to extract base filename
 def get_filename_from_path_or_url(path_or_url):
     parsed = urlparse(path_or_url)
     if parsed.scheme in ("http", "https"):
@@ -87,11 +83,7 @@ def get_filename_from_path_or_url(path_or_url):
     return os.path.splitext(unquote(name))[0]
 
 def _chunk_text(text: str, chunk_words: int = _CHUNK_WORDS, overlap: int = _CHUNK_OVERLAP) -> list[str]:
-    """Split *text* into overlapping word-level chunks.
-
-    Short pages (fewer words than *chunk_words*) are returned as-is.
-    Chunks preserve sentence boundaries as much as possible.
-    """
+    """Split text into overlapping word-level chunks. Short pages returned as-is."""
     words = text.split()
     if len(words) <= chunk_words:
         return [text]
@@ -126,11 +118,8 @@ def load_pdf_from_stream(pdf_stream):
     return pages
 
 def embed_pages_and_save(pages, base_name):
-    """Chunk pages, embed them, normalize to unit length, and persist a FAISS
-    IndexFlatIP index plus metadata pickle.
-
-    Uses cosine similarity (IndexFlatIP on L2-normalised vectors) — scores
-    are in [0, 1] and directly comparable to _RAG_RELEVANCE_THRESHOLD.
+    """Embed page chunks, normalise to unit length, and persist a FAISS IndexFlatIP index
+    plus a metadata pickle. Inner product on unit vectors == cosine similarity.
     """
     # Expand every page into chunks
     chunk_records = []
@@ -259,16 +248,19 @@ def serve_pdf_view(request):
     if not pdf_path:
         raise Http404("No pdf_file parameter provided.")
 
-    # Basic path traversal guard
-    pdf_path = os.path.normpath(pdf_path)
-    if '..' in pdf_path:
-        raise Http404("Invalid path.")
+    # Resolve to an absolute, canonical path — neutralises all traversal encodings
+    pdf_path = os.path.realpath(os.path.abspath(pdf_path))
+    textbooks_root = os.path.realpath(os.path.abspath(TEXTBOOKS_DIR))
 
-    if not os.path.exists(pdf_path):
-        raise Http404(f"PDF not found: {pdf_path}")
+    # Reject anything that escapes the Textbooks directory
+    if not pdf_path.startswith(textbooks_root + os.sep) and pdf_path != textbooks_root:
+        raise Http404("Access denied.")
 
     if not pdf_path.lower().endswith('.pdf'):
         raise Http404("Only PDF files are served by this endpoint.")
+
+    if not os.path.exists(pdf_path):
+        raise Http404(f"PDF not found.")
 
     response = FileResponse(open(pdf_path, 'rb'), content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{os.path.basename(pdf_path)}"'

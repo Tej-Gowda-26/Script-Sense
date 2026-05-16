@@ -17,7 +17,7 @@ db = client['ScriptSense']
 collection = db['students']
 login_collection = db['Login']
 
-# ── Ensure indexes exist (runs once at import time; safe to call repeatedly) ──
+# Ensure indexes exist (runs once at import time; safe to call repeatedly)
 try:
     collection.create_index(
         [("usn", ASCENDING), ("subject", ASCENDING), ("exam_type", ASCENDING)],
@@ -33,7 +33,7 @@ try:
 except Exception as _idx_err:
     logger.warning(f"Index creation skipped (may already exist): {_idx_err}")
 
-# Validate USN format
+# Expected format: YYETDDnnnrrr  (e.g. 22ETCS018001)
 def validate_usn(usn):
     if not usn:
         return None
@@ -57,7 +57,6 @@ def login(request):
     if not validate_usn(usn):
         return JsonResponse({'error': 'Invalid USN format'}, status=400)
 
-    # Find user and include password hash
     student = login_collection.find_one({"usn": usn}, {"_id": 0, "password": 1})
     if not student:
         return JsonResponse({'error': 'User not found'}, status=404)
@@ -122,7 +121,6 @@ def get_registered_subjects(request):
         if not validate_usn(usn):
             return JsonResponse({'error': 'Invalid USN format'}, status=400)
 
-        # Find all records for this student using module-level collection
         student_records = list(collection.find({"usn": usn}))
         logger.debug(f"Found {len(student_records)} records for USN: {usn}")
         
@@ -252,12 +250,14 @@ def add_or_get_feedback_marks(request):
             return JsonResponse({'error': str(e)}, status=500)
 
     elif request.method == 'GET':
-        usn = request.GET.get("usn")
-        subject = request.GET.get("subject")
-        exam_type = request.GET.get("exam_type")
+        usn       = request.GET.get("usn", "").strip()
+        subject   = request.GET.get("subject", "").strip()
+        exam_type = request.GET.get("exam_type", "").strip()
 
         if not validate_usn(usn):
             return JsonResponse({'error': 'Invalid USN'}, status=400)
+        if not subject or not exam_type:
+            return JsonResponse({'error': 'subject and exam_type are required'}, status=400)
 
         # Find the document matching the query criteria
         query = {

@@ -92,7 +92,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
           {files.map((file, idx) => (
             <div key={idx} className="flex items-center justify-between px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
               <span className="text-sm text-gray-700 truncate max-w-[85%]">{file.name}</span>
-              <button onClick={() => removeFile(idx)} className="text-gray-400 hover:text-red-500 transition-colors">
+              <button type="button" onClick={() => removeFile(idx)} className="text-gray-400 hover:text-red-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>

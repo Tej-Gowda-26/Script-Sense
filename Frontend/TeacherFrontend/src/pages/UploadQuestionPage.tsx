@@ -205,10 +205,9 @@ Return ONLY the raw JSON object, no markdown, no extra text.
       const requiresDiagram: DiagramRequirement = {};
       const processedQuestions: ExtractedQuestions = {};
 
-      // ── Diagram detection: combined LLM hint + keyword scan ──
+      // Diagram detection: LLM hint combined with a keyword scan for reliability.
       // Keywords use compound phrases only — broad single words like 'diagram' or 'sketch'
-      // are intentionally excluded to prevent false positives on questions that merely
-      // mention those concepts without asking the student to draw anything.
+      // are excluded to prevent false positives on questions that merely mention them.
       const DIAGRAM_KEYWORDS = [
         'neat sketch', 'neat diagram', 'with a sketch', 'with sketch',
         'with a diagram', 'with diagram', 'with a neat', 'draw ', 'draw a',
@@ -229,15 +228,16 @@ Return ONLY the raw JSON object, no markdown, no extra text.
         const text   = String(raw).replace(/\(requires diagram\)/gi, '').trim();
         const lower  = text.toLowerCase();
 
-        // ── Layer 1: reliable keyword scan on the question text ──
+        // Layer 1: keyword scan on the question text
         const keywordMatch = DIAGRAM_KEYWORDS.some(kw => lower.includes(kw));
 
-        // ── Layer 2: LLM hint (if the model returned the boolean) ──
+        // Layer 2: LLM hint (trust only when model returned an explicit boolean)
         const llmHint = typeof val === 'object' && typeof (val as any).requires_diagram === 'boolean'
           ? (val as any).requires_diagram as boolean
           : null;
 
-        // Writing verbs that the LLM often mis-flags as requiring a diagram
+        // Final decision: keyword match is definitive; LLM hint is trusted only
+        // when the question doesn't start with a pure writing verb (explain, describe, etc.)
         const WRITING_VERBS = [
           'illustrate', 'explain', 'describe', 'discuss',
           'define', 'list', 'compare', 'differentiate', 'elaborate',
@@ -245,11 +245,6 @@ Return ONLY the raw JSON object, no markdown, no extra text.
         const startsWithWritingVerb = WRITING_VERBS.some(
           v => lower.startsWith(v) || lower.includes('. ' + v)
         );
-
-        // Final decision:
-        //   - keyword matched → always true (most reliable)
-        //   - LLM says true AND question doesn't start with a pure writing verb → trust it
-        //   - otherwise false
         const needsDiagram =
           keywordMatch || (llmHint === true && !startsWithWritingVerb);
 
@@ -268,8 +263,8 @@ Return ONLY the raw JSON object, no markdown, no extra text.
       setQuestionRequiresDiagram(requiresDiagram);
       setDiagramImages(diagramInit);
 
-      // ── Verify: extracted main-question count vs manually entered count ──
-      // Keys like "1","2a","2b","3a","3b" → main numbers are 1,2,3
+      // Verify: extracted main-question count vs manually entered count.
+      // Keys like "1","2a","2b","3a","3b" → main numbers are 1, 2, 3.
       const mainQNumbers = new Set(
         Object.keys(processedQuestions).map(k => k.replace(/[a-zA-Z]+$/, ''))
       );
