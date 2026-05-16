@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { ChevronUp, ChevronDown, ImagePlus, AlertTriangle } from 'lucide-react';
 
 type QuestionItemProps = {

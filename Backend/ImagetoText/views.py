@@ -394,7 +394,6 @@ def process_exam_images(request):
         # grade_questions() uses per-question total_marks from DB when available;
         # default_total is the fallback for records without stored marks.
         response_data   = {'results': grading_results}
-        response_text   = json.dumps(response_data)
         logger.info(f"Grading complete: {len(grading_results)} results")
         
         # Format feedback — forward ALL fields from Evaluate (core + extended)

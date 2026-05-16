@@ -241,10 +241,7 @@ def add_or_get_feedback_marks(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            usn = data['usn']
-            subject = data['subject']
-            exam_type = data['exam_type']  # e.g., 'CIE' or 'SEE'
-            
+
             # Delegate entirely to the shared helper
             ok, msg = save_student_feedback(data)
             if ok:
