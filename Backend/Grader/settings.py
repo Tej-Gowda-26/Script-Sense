@@ -16,7 +16,7 @@ MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017')
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 # Legacy — the main pipeline calls save_student_feedback() directly.
 # Retained in case external callers POST feedback via HTTP.
@@ -54,6 +54,10 @@ CORS_ALLOW_ALL_ORIGINS = True
 ROOT_URLCONF = 'Grader.urls'
 
 APPEND_SLASH = False
+
+# Allow large multipart payloads (multi-image answer sheets + base64 data)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800   # 50 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE  = 52428800   # 50 MB
 
 TEMPLATES = [
     {
@@ -95,3 +99,35 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Logging ─────────────────────────────────────────────────────────────────
+# Show INFO+ logs from every ScriptSense app module in the console during dev.
+# Without this block, Django's default config only surfaces WARNING and above,
+# which swallows all logger.info() calls used for pipeline diagnostics.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{levelname}] {asctime} {name}: {message}',
+            'style': '{',
+            'datefmt': '%H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        # ScriptSense app modules
+        'ImagetoText': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
+        'Evaluate':    {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
+        'RagPipe':     {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
+        'Student':     {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
+        'UploadQP':    {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
+        # Django internals — keep at WARNING to avoid noise
+        'django':      {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
+    },
+}

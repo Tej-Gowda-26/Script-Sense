@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
 import FileUpload from '../components/FileUpload';
@@ -63,7 +63,7 @@ const UploadAnswerPage = () => {
     setRagName(localStorage.getItem('rag_indexed_name') || '');
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (images.length < 1 || images.length > 5) {

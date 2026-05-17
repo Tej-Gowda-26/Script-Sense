@@ -185,6 +185,14 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
         if feedbacks_raw is None or not isinstance(feedbacks_raw, list):
             return False, "'feedback' must be a non-null list"
 
+        dropped = [item for item in feedbacks_raw if 'question' not in item or 'feedback' not in item]
+        if dropped:
+            logger.warning(
+                f"save_student_feedback: {len(dropped)} item(s) dropped because they were missing "
+                f"'question' or 'feedback' keys. Dropped indices: "
+                f"{[item.get('index', item.get('qno', '?')) for item in dropped]}"
+            )
+
         feedbacks = [
             {
                 'qno':     item.get('qno', item.get('index', 0) + 1),

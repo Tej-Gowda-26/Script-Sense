@@ -34,9 +34,9 @@ except Exception:
 logger = logging.getLogger(__name__)
 
 # OCR model chain: tried in order when rate-limited (same strategy as Evaluate)
+# Only Scout is confirmed to accept image_url content blocks on Groq.
 _OCR_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
-    "llama-3.2-11b-vision-preview",  # smaller vision model — higher quota, genuine fallback
 ]
 
 mongo_client = MongoClient(settings.MONGO_URI)
