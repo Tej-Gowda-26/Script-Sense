@@ -13,11 +13,10 @@ logger = logging.getLogger(__name__)
 MAX_RAG_CHARS = 4000
 
 # Inter-question delays — adaptive based on whether the previous call hit a rate limit
-INTER_QUESTION_DELAY_NORMAL    = 0.3   # seconds — normal operation
-INTER_QUESTION_DELAY_AFTER_429 = 0.6   # seconds — one question after a TPM 429 hit
-# Model fallback chain — tried in order when a rate limit is hit
-# Primary: large, high quality. Fallback: smaller, 5× higher daily quota.
-# Model chain for text-only grading (high quality text models)
+INTER_QUESTION_DELAY_NORMAL    = 0.3   # seconds
+INTER_QUESTION_DELAY_AFTER_429 = 0.6   # seconds — after a TPM 429 hit
+
+# Text model chain (high-throughput; tried in order on rate-limit)
 GROQ_MODEL_CHAIN = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
@@ -73,9 +72,7 @@ def _is_diagram_only(question_text: str) -> bool:
     lower = question_text.lower().strip()
     return any(lower.startswith(kw) for kw in _DIAGRAM_ONLY_STARTERS)
 
-# ---------------------------------------------------------------------------
-# System prompt — encodes the full grading philosophy
-# ---------------------------------------------------------------------------
+# System prompts
 GRADING_SYSTEM_PROMPT = """You are an expert academic examiner. Your job is to evaluate a student's written answer to a given question and award marks fairly using nuanced, human-like judgment.
 
 ## Core Grading Philosophy
@@ -129,9 +126,51 @@ Return ONLY a valid JSON object with EXACTLY these fields — no extra text:
   "used_rag_reference": <true|false>
 }"""
 
+GRADING_SYSTEM_PROMPT_SPLIT = """You are an expert academic examiner. Your job is to evaluate a student's written answer and their drawn diagram SEPARATELY, then award marks for each component fairly.
+
+## Core Grading Philosophy
+- Do NOT use binary thinking (correct/incorrect only).
+- Award partial marks wherever a component is partially correct.
+- Do NOT penalize harmless wording or drawing differences.
+- Do NOT require exact similarity to any reference text or diagram.
+
+## How to Judge Each Component
+
+### Written/Text Answer
+- Correctness — which parts are factually right or wrong?
+- Completeness — which key ideas are present or missing?
+- Relevance — does the answer address the question?
+- Depth — is the answer shallow, adequate, or insightful?
+
+### Diagram
+- Structure — are major components drawn correctly?
+- Labels — are labels present and accurate?
+- Connections — are relationships between parts correct?
+- Completeness — are key elements missing?
+
+## Output Format
+Return ONLY a valid JSON object with EXACTLY these fields — no extra text:
+{
+  "text_marks_awarded": <number out of text_max_marks, can be decimal>,
+  "diagram_marks_awarded": <number out of diagram_max_marks, can be decimal>,
+  "max_marks": <total marks = text_max_marks + diagram_max_marks>,
+  "correctness_assessment": "<one concise sentence about the written answer>",
+  "completeness_assessment": "<one concise sentence>",
+  "relevance_assessment": "<one concise sentence>",
+  "depth_assessment": "<one concise sentence>",
+  "diagram_assessment": "<one concise sentence about the drawn diagram>",
+  "correct_points_found": ["<point1>", "<point2>"],
+  "missing_points": ["<point1>", "<point2>"],
+  "incorrect_points": ["<point1>", "<point2>"],
+  "partial_credit_reasoning": "<explanation of how marks were split between text and diagram>",
+  "final_feedback": "<constructive, student-facing feedback covering both text and diagram>",
+  "confidence": "<high|medium|low>",
+  "used_rag_reference": <true|false>
+}"""
+
 
 def _build_user_prompt(question, answer, total_marks, retrieved_context=None, has_diagram=False):
-    """Build the per-question user-turn message."""
+    """Build the user-turn prompt for holistic (legacy) grading mode."""
     if isinstance(answer, list):
         answer_text = " ".join(str(a) for a in answer)
     else:
@@ -169,6 +208,44 @@ Provide a single holistic score that reflects both dimensions."""
 Grade the student answer fairly. Award partial marks where applicable. Return the result as a single JSON object matching the required output format exactly."""
 
 
+def _build_split_prompt(question, answer, theory_marks, diagram_marks_val, retrieved_context=None):
+    """Build the user-turn prompt for split grading mode.
+
+    The LLM is given explicit per-component budgets and returns
+    'text_marks_awarded' and 'diagram_marks_awarded' separately.
+    Images (reference + student diagram) are attached by the caller.
+    """
+    if isinstance(answer, list):
+        answer_text = " ".join(str(a) for a in answer)
+    else:
+        answer_text = str(answer)
+
+    rag_block = ""
+    if retrieved_context and str(retrieved_context).strip():
+        rag_block = f"""
+## Retrieved Reference Context (use as supporting reference only)
+{retrieved_context}"""
+
+    return f"""## Question
+{question}
+
+## Student Answer
+{answer_text}
+
+## Mark Budget
+- Written/text answer: {theory_marks} marks
+- Diagram: {diagram_marks_val} marks
+- Total: {theory_marks + diagram_marks_val} marks
+
+The reference diagram (correct answer) and the student's drawn diagram are attached as images.
+Please:
+1. Grade the WRITTEN ANSWER out of {theory_marks} marks.
+2. Grade the DRAWN DIAGRAM out of {diagram_marks_val} marks by comparing it against the reference.
+3. Return 'text_marks_awarded' (out of {theory_marks}) and 'diagram_marks_awarded' (out of {diagram_marks_val}) separately.{rag_block}
+
+Return the result as a single JSON object matching the required output format exactly."""
+
+
 def _as_list(val):
     """Coerce model output to a clean list of strings."""
     if isinstance(val, list):
@@ -178,40 +255,36 @@ def _as_list(val):
     return []
 
 
-# ---------------------------------------------------------------------------
-# Core grading function — importable directly by other Django apps
-# ---------------------------------------------------------------------------
+# Core grading function — called directly by ImagetoText (no HTTP round-trip)
 def grade_questions(questions: list, default_total=None) -> list:
-    """Grade a list of questions by calling Groq directly (no internal HTTP).
+    """Grade a list of questions via Groq (no internal HTTP round-trip).
 
     Each item in *questions* must contain:
-        question (str), answer (str | list)
-        total_marks (int)  OR rely on default_total
-    Optional:
-        retrieved_context (str), qno (int)
+        question (str), answer (str | list), total_marks (int)
+    Optional: retrieved_context (str), qno, reference_image_b64,
+              student_diagram_b64, diagram_marks
 
-    Returns a list of result dicts with the same shape as the
-    evaluate_answer JSON response.
+    Returns a list of result dicts (same shape as the evaluate_answer response).
     """
     results = []
-    _rate_limited_last = False   # tracks whether the previous question hit a TPM 429
+    _rate_limited_last = False
 
     for idx, q in enumerate(questions):
         question          = q.get('question')
         answer            = q.get('answer')
         retrieved_context = q.get('retrieved_context', '')
-        # Truncate RAG context to keep total prompt tokens manageable
         if retrieved_context and len(retrieved_context) > MAX_RAG_CHARS:
             retrieved_context = retrieved_context[:MAX_RAG_CHARS] + "\n... [context truncated]"
         total_marks       = q.get('total_marks') or default_total
 
         ref_b64             = q.get('reference_image_b64', '')
         student_b64         = q.get('student_diagram_b64', '')
+        diagram_marks_val   = q.get('diagram_marks')   # None → legacy holistic mode
         has_ref_diagram     = bool(ref_b64)
         has_student_diagram = bool(student_b64)
-        has_diagram  = False   # resolved below during diagram routing
-        marks_scale  = 1.0    # penalty multiplier (1.0 = no deduction)
-        penalty_note = ''     # appended to feedback when marks are capped
+        has_diagram    = False   # resolved in diagram routing below
+        penalty_note   = ''     # appended to feedback on vision fallback
+        use_split_mode = False   # True when teacher set diagram_marks
 
         if not question or not total_marks:
             results.append({
@@ -220,7 +293,6 @@ def grade_questions(questions: list, default_total=None) -> list:
             })
             continue
 
-        # Guard: empty / whitespace-only answer
         answer_text_check = (
             ' '.join(answer).strip() if isinstance(answer, list) else str(answer).strip()
         )
@@ -252,14 +324,23 @@ def grade_questions(questions: list, default_total=None) -> list:
             results.append({'index': idx, 'error': 'total_marks must be an integer'})
             continue
 
-        # Diagram routing: set grading mode and apply missing-component penalties.
+        # Diagram routing: resolve grading mode (split vs legacy) and prompt structure.
         has_theory_answer = len(answer_text_check) > _HAS_THEORY_THRESHOLD
 
         if has_ref_diagram:
-            if _is_diagram_only(question):
-                # Case A: diagram-only question
+            if diagram_marks_val is not None:
+                # Split mode: grade text out of theory_marks_val, diagram separately.
+                theory_marks_val = total_marks - diagram_marks_val
+                use_split_mode   = True
+                has_diagram      = True
+                logger.info(
+                    f"Q{idx+1}: Split mode — text={theory_marks_val}m, "
+                    f"diagram={diagram_marks_val}m (teacher-defined)"
+                )
+
+            elif _is_diagram_only(question):
+                # Legacy diagram-only question — hard zero if no diagram detected.
                 if not has_student_diagram:
-                    # No diagram found → hard zero
                     logger.info(f"Q{idx+1}: Diagram-only question with no student diagram → 0 marks")
                     results.append({
                         'index': idx,
@@ -284,47 +365,59 @@ def grade_questions(questions: list, default_total=None) -> list:
                         time.sleep(INTER_QUESTION_DELAY_NORMAL)
                     continue
                 else:
-                    # Diagram present → grade visually
-                    has_diagram = True
+                    has_diagram = True  # diagram present → grade visually
 
             else:
-                # Case B: question requires both theory and diagram
-                if has_theory_answer and has_student_diagram:
-                    # Both present → full multimodal grading
+                # Legacy mixed question (text + diagram, no mark split): grade holistically.
+                # Include the student diagram visually when present; otherwise text-only.
+                if has_student_diagram:
                     has_diagram = True
-                    logger.info(f"Q{idx+1}: Theory + diagram both present → full multimodal grading")
+                    logger.info(f"Q{idx+1}: Legacy mixed question — multimodal grading (no mark split)")
+                else:
+                    logger.info(f"Q{idx+1}: Legacy mixed question — text-only grading (no student diagram found)")
 
-                elif has_theory_answer and not has_student_diagram:
-                    # Theory written, diagram missing → deduct 40 %
-                    has_diagram  = False
-                    marks_scale  = 0.6
-                    penalty_note = '40% marks deducted for missing diagram.'
-                    logger.info(f"Q{idx+1}: Theory present but no diagram → capping at 60% of marks")
-
-                elif has_student_diagram and not has_theory_answer:
-                    # Diagram drawn, no theory → deduct 50 %
-                    has_diagram  = True
-                    marks_scale  = 0.5
-                    penalty_note = '50% marks deducted for missing written theory.'
-                    logger.info(f"Q{idx+1}: Diagram present but no theory → capping at 50% of marks")
-
-                # else: both absent — handled by the empty-answer guard above
-        # No reference diagram → text-only grading (has_diagram remains False)
-
-        user_prompt = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=has_diagram)
-
-        # Build message content — multimodal if diagram images are present, text-only otherwise
-        if has_diagram:
-            user_content = [
-                {"type": "text",      "text": user_prompt},
-                {"type": "text",      "text": "Reference Diagram (correct answer):"},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{ref_b64}"}},
-                {"type": "text",      "text": "Student's Drawn Diagram:"},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{student_b64}"}},
-            ]
-            logger.info(f"Q{idx+1}: Using multimodal grading (text + reference diagram + student diagram)")
+        if use_split_mode:
+            user_prompt = _build_split_prompt(
+                question, answer, theory_marks_val, diagram_marks_val, retrieved_context
+            )
+            active_system_prompt = GRADING_SYSTEM_PROMPT_SPLIT
+            if has_student_diagram:
+                user_content = [
+                    {"type": "text",      "text": user_prompt},
+                    {"type": "text",      "text": "Reference Diagram (correct answer):"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{ref_b64}"}},
+                    {"type": "text",      "text": "Student's Drawn Diagram:"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{student_b64}"}},
+                ]
+                logger.info(
+                    f"Q{idx+1}: Split-mode multimodal grading — "
+                    f"text={theory_marks_val}m, diagram={diagram_marks_val}m"
+                )
+            else:
+                user_content = _build_user_prompt(
+                    question, answer, theory_marks_val, retrieved_context, has_diagram=False
+                )
+                active_system_prompt = GRADING_SYSTEM_PROMPT
+                logger.info(
+                    f"Q{idx+1}: Split-mode text-only (no student diagram detected) — "
+                    f"grading text out of {theory_marks_val}m; diagram=0"
+                )
         else:
-            user_content = user_prompt
+            user_prompt = _build_user_prompt(
+                question, answer, total_marks, retrieved_context, has_diagram=has_diagram
+            )
+            active_system_prompt = GRADING_SYSTEM_PROMPT
+            if has_diagram:
+                user_content = [
+                    {"type": "text",      "text": user_prompt},
+                    {"type": "text",      "text": "Reference Diagram (correct answer):"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{ref_b64}"}},
+                    {"type": "text",      "text": "Student's Drawn Diagram:"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{student_b64}"}},
+                ]
+                logger.info(f"Q{idx+1}: Legacy multimodal grading (text + reference diagram + student diagram)")
+            else:
+                user_content = user_prompt
 
         headers = {
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
@@ -334,14 +427,17 @@ def grade_questions(questions: list, default_total=None) -> list:
         content = None
         groq_response = None
 
-        # Use vision chain for diagram questions, text chain for text-only.
-        model_chain = GROQ_VISION_MODEL_CHAIN if has_diagram else GROQ_MODEL_CHAIN
+        model_chain = (
+            GROQ_VISION_MODEL_CHAIN
+            if isinstance(user_content, list)
+            else GROQ_MODEL_CHAIN
+        )
 
         for model_name in model_chain:
             payload = {
                 "model": model_name,
                 "messages": [
-                    {"role": "system", "content": GRADING_SYSTEM_PROMPT},
+                    {"role": "system", "content": active_system_prompt},
                     {"role": "user",   "content": user_content}
                 ],
                 "temperature": 0.2,
@@ -358,14 +454,13 @@ def grade_questions(questions: list, default_total=None) -> list:
             except requests.RequestException as e:
                 logger.error(f"Q{idx+1} [{model_name}]: request exception: {e}")
                 groq_response = None
-                continue  # try next model
+                continue
 
             if groq_response.status_code == 200:
                 if model_name != model_chain[0]:
                     logger.warning(f"Q{idx+1}: graded with fallback model '{model_name}'")
-                break  # success
+                break
 
-            # Parse and log the error
             try:
                 err_body = groq_response.json()
             except Exception:
@@ -379,14 +474,11 @@ def grade_questions(questions: list, default_total=None) -> list:
             logger.error(f"Q{idx+1} [{model_name}]: HTTP {groq_response.status_code}: {err_str[:300]}")
 
             if is_tpd:
-                # Daily quota exhausted — no point retrying same model; move to fallback
                 logger.warning(f"Q{idx+1} [{model_name}]: TPD limit hit — trying next model in chain")
                 groq_response = None
                 continue
 
             if is_tpm:
-                # TPM hit — wait the API-specified duration, then retry the same model.
-                # Parsing the exact wait time avoids a second 429 on retry.
                 wait_secs = _parse_retry_after(err_str)
                 logger.warning(f"Q{idx+1} [{model_name}]: TPM limit — waiting {wait_secs:.1f}s (API-specified)")
                 _rate_limited_last = True
@@ -400,17 +492,14 @@ def grade_questions(questions: list, default_total=None) -> list:
                     groq_response = None
                 if groq_response and groq_response.status_code == 200:
                     break
-                # Still failing — try next model
                 groq_response = None
                 continue
 
-            # 400/404 errors (bad model, bad request) — try next model rather than dropping the question
             if groq_response.status_code in (404, 400):
                 logger.warning(f"Q{idx+1} [{model_name}]: {groq_response.status_code} error — trying next model")
                 groq_response = None
                 continue
 
-            # Unrecoverable error (auth, server error, etc.) — stop retrying
             results.append({
                 'index': idx, 'error': 'Groq API error',
                 'details': err_body, 'status_code': groq_response.status_code
@@ -419,13 +508,16 @@ def grade_questions(questions: list, default_total=None) -> list:
             break
 
         if groq_response is None or groq_response.status_code != 200:
-            # Vision chain exhausted — degrade to text-only rather than emitting a zero-score error.
-            if has_diagram:
+            if has_diagram or use_split_mode:
                 logger.warning(
                     f"Q{idx+1}: Vision model unavailable — retrying as text-only (diagram quality not assessed)"
                 )
-                # Re-grade without images using the text model chain
-                text_prompt   = _build_user_prompt(question, answer, total_marks, retrieved_context, has_diagram=False)
+                if use_split_mode:
+                    fallback_marks = theory_marks_val
+                else:
+                    fallback_marks = total_marks
+
+                text_prompt   = _build_user_prompt(question, answer, fallback_marks, retrieved_context, has_diagram=False)
                 text_response = None
                 for tm in GROQ_MODEL_CHAIN:
                     try:
@@ -448,24 +540,29 @@ def grade_questions(questions: list, default_total=None) -> list:
                         pass
                 if text_response and text_response.status_code == 200:
                     groq_response = text_response
-                    penalty_note  = (
-                        (penalty_note + " " if penalty_note else "") +
-                        "Diagram quality could not be assessed — vision model unavailable; graded on written text only."
-                    )
-                    marks_scale = min(marks_scale, 0.6)  # cap at 60 % when diagram unverified
-                    # Continue to the normal JSON-parsing block below
+                    if use_split_mode:
+                        penalty_note = (
+                            "Diagram could not be assessed (vision model unavailable) "
+                            f"— diagram marks = 0/{diagram_marks_val}."
+                        )
+                        logger.warning(
+                            f"Q{idx+1}: Split-mode vision fallback "
+                            f"— text graded out of {fallback_marks}m; diagram = 0/{diagram_marks_val}m"
+                        )
+                    else:
+                        penalty_note = (
+                            (penalty_note + " " if penalty_note else "") +
+                            "Diagram could not be assessed (vision model unavailable) — graded on written text only."
+                        )
                 else:
-                    # Text fallback also failed — last resort placeholder
                     if not any(r.get('index') == idx for r in results):
                         results.append({'index': idx, 'error': 'Groq API error after all retries (vision + text)'})
                     if idx < len(questions) - 1:
                         time.sleep(INTER_QUESTION_DELAY_NORMAL)
                     continue
             else:
-                # Error already appended inside the loop
                 if not any(r.get('index') == idx for r in results):
                     results.append({'index': idx, 'error': 'Groq API error after all retries'})
-                # Delay before next question even after failure
                 if idx < len(questions) - 1:
                     time.sleep(INTER_QUESTION_DELAY_NORMAL)
                 continue
@@ -489,15 +586,44 @@ def grade_questions(questions: list, default_total=None) -> list:
 
             grading = json.loads(json_match.group(0))
 
-            marks_awarded = float(grading.get('marks_awarded', 0))
-            marks_awarded = max(0.0, min(marks_awarded, float(total_marks)))
-            # Apply partial-answer penalty (diagram or theory missing)
-            marks_awarded = round(marks_awarded * marks_scale, 1)
-
             answer_str = ' '.join(answer) if isinstance(answer, list) else str(answer)
 
-            base_feedback = grading.get('final_feedback', '')
-            final_feedback = f"{base_feedback} [{penalty_note}]" if penalty_note else base_feedback
+            if use_split_mode:
+                text_awarded    = float(grading.get('text_marks_awarded', 0))
+                diagram_awarded = float(grading.get('diagram_marks_awarded', 0))
+
+                if 'marks_awarded' in grading and 'text_marks_awarded' not in grading:
+                    text_awarded = float(grading.get('marks_awarded', 0))
+                    diagram_awarded = 0.0
+
+                text_awarded    = max(0.0, min(text_awarded,    float(theory_marks_val)))
+                diagram_awarded = max(0.0, min(diagram_awarded, float(diagram_marks_val)))
+
+                if not has_student_diagram:
+                    diagram_awarded = 0.0
+
+                marks_awarded = round(text_awarded + diagram_awarded, 1)
+
+                split_note = (
+                    f"Text: {text_awarded}/{theory_marks_val}m, "
+                    f"Diagram: {diagram_awarded}/{diagram_marks_val}m"
+                )
+                if not has_student_diagram:
+                    split_note += " (no diagram detected in answer sheet — diagram marks = 0)"
+                base_feedback  = grading.get('final_feedback', '')
+                vision_note    = f" {penalty_note}" if penalty_note else ""
+                final_feedback = f"{base_feedback} [{split_note}]{vision_note}"
+
+                logger.info(
+                    f"Q{idx+1}: Split score — text={text_awarded}/{theory_marks_val}, "
+                    f"diagram={diagram_awarded}/{diagram_marks_val}, total={marks_awarded}/{total_marks}"
+                )
+            else:
+                marks_awarded = float(grading.get('marks_awarded', 0))
+                marks_awarded = round(max(0.0, min(marks_awarded, float(total_marks))), 1)
+
+                base_feedback  = grading.get('final_feedback', '')
+                final_feedback = f"{base_feedback} [{penalty_note}]" if penalty_note else base_feedback
 
             results.append({
                 'index': idx,
@@ -544,8 +670,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 '_raw_response':   content,
             })
 
-        # Adaptive inter-question delay:
-        # Use the longer delay after a rate-limit hit; normal delay otherwise.
+        # Adaptive delay: longer after a rate-limit hit, normal otherwise.
         if idx < len(questions) - 1:
             delay = INTER_QUESTION_DELAY_AFTER_429 if _rate_limited_last else INTER_QUESTION_DELAY_NORMAL
             _rate_limited_last = False   # reset after consuming the extended delay
@@ -554,7 +679,7 @@ def grade_questions(questions: list, default_total=None) -> list:
     return results
 
 
-# HTTP wrapper — delegates to grade_questions(); useful for external/test callers.
+# HTTP endpoint — wraps grade_questions() for external/test callers.
 @csrf_exempt
 def evaluate_answer(request):
     if request.method != 'POST':

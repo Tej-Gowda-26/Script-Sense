@@ -32,15 +32,31 @@ def upload_question_paper_json(request):
         processed_questions = []
 
         for q in questions:
-            qno          = q.get('qno')
+            qno           = q.get('qno')
             question_text = q.get('question')
-            marks        = q.get('marks', 10)
+            marks         = q.get('marks', 10)
+            diagram_marks = q.get('diagram_marks')   # optional — None when no diagram
 
             if qno is None or not question_text:
                 return JsonResponse(
                     {'error': f'Missing fields in question {qno}.'},
                     status=400
                 )
+
+            # Validate diagram_marks when provided
+            if diagram_marks is not None:
+                try:
+                    diagram_marks = int(diagram_marks)
+                except (ValueError, TypeError):
+                    return JsonResponse(
+                        {'error': f'diagram_marks for Q{qno} must be an integer.'},
+                        status=400
+                    )
+                if diagram_marks < 1 or diagram_marks >= int(marks):
+                    return JsonResponse(
+                        {'error': f'diagram_marks for Q{qno} must be between 1 and {int(marks) - 1}.'},
+                        status=400
+                    )
 
             # Optional reference diagram image for this question
             image_file = request.FILES.get(f'image_{qno}')
@@ -53,10 +69,11 @@ def upload_question_paper_json(request):
                 }
 
             processed_questions.append({
-                'qno':      str(qno),   # stored as string: "1", "2a", "2b", …
-                'question': question_text,
-                'marks':    int(marks),
-                'image':    image_data,
+                'qno':           str(qno),   # stored as string: "1", "2a", "2b", …
+                'question':      question_text,
+                'marks':         int(marks),
+                'diagram_marks': diagram_marks,  # None when no diagram
+                'image':         image_data,
             })
 
         # 3. Upsert — one document per subject/exam_type; stale versions overwritten.

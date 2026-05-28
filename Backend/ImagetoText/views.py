@@ -33,8 +33,7 @@ except Exception:
 # Use Django's logger — do NOT call logging.basicConfig() inside Django apps
 logger = logging.getLogger(__name__)
 
-# OCR model chain: tried in order when rate-limited (same strategy as Evaluate)
-# Only Scout is confirmed to accept image_url content blocks on Groq.
+# OCR model chain — only Scout is confirmed to accept image_url blocks on Groq.
 _OCR_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
@@ -142,7 +141,7 @@ def parse_and_add_questions(extracted_text, subject, exam_type):
                 chunk = "\n".join(lines[start:end]).strip()
                 found_answers[key] = [chunk] if chunk else []
     
-    # Build result — preserve natural question order
+    # Build result in natural question order.
     result = []
     for qno_str in sorted(db_questions.keys(), key=_sort_key):
         q_data  = db_questions[qno_str]
@@ -230,26 +229,33 @@ def _save_feedback_direct(payload: dict) -> tuple:
     return 500, msg
 
 
-def get_reference_image_b64(subject: str, exam_type: str, qno) -> str:
-    """Return the reference diagram for a question as a base64 string, or '' if none exists."""
+def get_reference_image_data(subject: str, exam_type: str, qno) -> tuple:
+    """Return (base64_str, diagram_marks) for a question's reference diagram.
+
+    Returns ('', None) when no reference image exists.
+    diagram_marks is the teacher-specified marks for the diagram component,
+    or None for old question papers that pre-date the field.
+    """
     try:
         doc = questions_collection.find_one(
             {"subject": subject, "exam_type": exam_type},
             sort=[("_id", -1)]
         )
         if not doc or 'questions' not in doc:
-            return ""
+            return "", None
         qno_str = str(qno)
         for q in doc['questions']:
             if str(q.get('qno')) == qno_str:
-                image_data = q.get('image')
+                image_data   = q.get('image')
+                diagram_marks = q.get('diagram_marks')  # None for legacy records
                 if image_data and image_data.get('data'):
                     raw_bytes = bytes(image_data['data'])
-                    return base64.b64encode(raw_bytes).decode('utf-8')
-        return ""
+                    b64 = base64.b64encode(raw_bytes).decode('utf-8')
+                    return b64, diagram_marks
+        return "", None
     except Exception as e:
         logger.warning(f"Failed to retrieve reference image for Q{qno}: {e}")
-        return ""
+        return "", None
 
 
 def find_student_diagram_page(base64_images: list, question_text: str, qno) -> str:
@@ -333,7 +339,7 @@ def process_exam_images(request):
         
         refined_payload = parse_and_add_questions(extracted_text, subject, exam_type)
 
-        # --- Optional: inject RAG context per question ---
+        # Inject RAG context per question when a textbook index is available.
         if use_rag:
             logger.info(f"RAG enabled — querying index '{index_file}' for {len(refined_payload)} questions")
             for q in refined_payload:
@@ -353,21 +359,26 @@ def process_exam_images(request):
 
         diagram_count = 0
         for q in refined_payload:
-            qno     = q.get('qno')
-            ref_b64 = get_reference_image_b64(subject, exam_type, qno)
+            qno                = q.get('qno')
+            ref_b64, diag_marks = get_reference_image_data(subject, exam_type, qno)
             if ref_b64:
                 logger.info(f"Q{qno}: Reference diagram found — locating student diagram page")
                 student_b64 = find_student_diagram_page(base64_images, q.get('question', ''), qno)
                 if student_b64:
                     q['reference_image_b64'] = ref_b64
                     q['student_diagram_b64'] = student_b64
+                    if diag_marks is not None:
+                        q['diagram_marks'] = diag_marks
                     diagram_count += 1
-                    logger.info(f"Q{qno}: Student diagram located — visual grading enabled")
+                    logger.info(f"Q{qno}: Student diagram located — visual grading enabled (diagram_marks={diag_marks})")
                 else:
-                    # Pass reference_image_b64 even without a student diagram so the
-                    # penalty policy (40 % deduction) is triggered inside grade_questions().
+                    # No diagram detected on any page — attach reference image and
+                    # diagram_marks so the grader knows the split budget, but
+                    # has_student_diagram will be False → diagram portion = 0 automatically.
                     q['reference_image_b64'] = ref_b64
-                    logger.info(f"Q{qno}: No student diagram found — penalty policy will apply")
+                    if diag_marks is not None:
+                        q['diagram_marks'] = diag_marks
+                    logger.info(f"Q{qno}: No student diagram detected — diagram marks will be 0")
         if diagram_count:
             logger.info(f"Visual grading enabled for {diagram_count} question(s)")
 
@@ -387,7 +398,7 @@ def process_exam_images(request):
         response_data   = {'results': grading_results}
         logger.info(f"Grading complete: {len(grading_results)} results")
         
-        # Format feedback — forward ALL fields from Evaluate (core + extended)
+        # Build feedback list — forward all assessment fields from the grading engine.
         feedback_list = []
 
         if isinstance(response_data, dict) and "results" in response_data:
@@ -440,7 +451,6 @@ def process_exam_images(request):
                 # Resolve total marks
                 q_total = result.get("total") or total
 
-                # --- Build feedback item: core fields + all extended assessment fields ---
                 feedback_item = {
                     "index": idx,
                     "qno":   qno,
@@ -466,9 +476,7 @@ def process_exam_images(request):
         
         logger.info(f"Generated feedback list: {feedback_list}")
         
-        # Create the payload with the properly formatted feedback
-        # answer_sheets: base64 strings of every uploaded page — stored so students
-        # can review their own answer sheets from the dashboard later.
+        # answer_sheets: base64 of each uploaded page, stored for student review.
         student_payload = {
             'usn': usn,
             'subject': subject,

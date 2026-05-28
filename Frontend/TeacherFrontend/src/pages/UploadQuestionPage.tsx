@@ -8,6 +8,7 @@ type ExtractedQuestion = { question: string; marks: number };
 type ExtractedQuestions = Record<string, ExtractedQuestion>;
 type DiagramRequirement = Record<string, boolean>;
 type DiagramImages = Record<string, File | null>;
+type DiagramMarks = Record<string, number | null>;
 
 /** Extracts the first balanced JSON object from a string, even when
  *  the LLM adds explanatory text or markdown fences around it. */
@@ -43,6 +44,7 @@ const UploadQuestionPage = () => {
   const [extractedQuestions, setExtractedQuestions] = useState<ExtractedQuestions>({});
   const [questionRequiresDiagram, setQuestionRequiresDiagram] = useState<DiagramRequirement>({});
   const [diagramImages, setDiagramImages] = useState<DiagramImages>({});
+  const [diagramMarks, setDiagramMarks] = useState<DiagramMarks>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState(1);
@@ -289,6 +291,12 @@ Return ONLY the raw JSON object, no markdown, no extra text.
 
   const handleDiagramUpload = (qNum: string, file: File | null) => {
     setDiagramImages((prev) => ({ ...prev, [qNum]: file }));
+    // Reset diagram marks when a new diagram is uploaded
+    if (!file) setDiagramMarks((prev) => ({ ...prev, [qNum]: null }));
+  };
+
+  const handleDiagramMarksChange = (qNum: string, value: number | null) => {
+    setDiagramMarks((prev) => ({ ...prev, [qNum]: value }));
   };
 
   const saveToBackend = async () => {
@@ -297,9 +305,13 @@ Return ONLY the raw JSON object, no markdown, no extra text.
 
     try {
       const questions = Object.entries(extractedQuestions).map(([qno, { question, marks }]) => ({
-        qno,        // keep as string: "1", "2a", "2b", etc.
+        qno,
         question,
         marks,
+        // Include diagram_marks only for diagram questions where a value was entered
+        ...(questionRequiresDiagram[qno] && diagramMarks[qno] != null
+          ? { diagram_marks: diagramMarks[qno] }
+          : {}),
       }));
 
       const formData = new FormData();
@@ -343,13 +355,18 @@ Return ONLY the raw JSON object, no markdown, no extra text.
     setExtractedQuestions({});
     setQuestionRequiresDiagram({});
     setDiagramImages({});
+    setDiagramMarks({});
     setStep(1);
     setError('');
   };
 
   const isSubmitDisabled = () =>
     Object.entries(questionRequiresDiagram).some(
-      ([qNum, required]) => required && !diagramImages[qNum]
+      ([qNum, required]) =>
+        required && (
+          !diagramImages[qNum] ||
+          diagramMarks[qNum] == null
+        )
     );
 
   return (
@@ -433,6 +450,7 @@ Return ONLY the raw JSON object, no markdown, no extra text.
                 marks={marks}
                 requiresDiagram={questionRequiresDiagram[qNum]}
                 onDiagramUpload={handleDiagramUpload}
+                onDiagramMarksChange={handleDiagramMarksChange}
               />
             ))}
           </div>

@@ -168,7 +168,7 @@ def ragify_pdf_view(request):
             pdf_stream = BytesIO(pdf_bytes)
             base_name = os.path.join(TEXTBOOKS_DIR, get_filename_from_path_or_url(pdf_url))
         else:
-            pdf_bytes = pdf_file.file.read()      # read once; seek back for PyPDF2
+            pdf_bytes = pdf_file.file.read()      # read into memory; BytesIO wraps these bytes for PyPDF2
             pdf_stream = BytesIO(pdf_bytes)
             base_name = os.path.join(TEXTBOOKS_DIR, os.path.splitext(pdf_file.name)[0])
 

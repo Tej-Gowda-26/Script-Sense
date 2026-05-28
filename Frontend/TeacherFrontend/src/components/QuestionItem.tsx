@@ -7,6 +7,7 @@ type QuestionItemProps = {
   marks: number;
   requiresDiagram: boolean;
   onDiagramUpload: (questionNum: string, file: File | null) => void;
+  onDiagramMarksChange: (questionNum: string, value: number | null) => void;
 };
 
 const QuestionItem: React.FC<QuestionItemProps> = ({
@@ -15,10 +16,13 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
   marks,
   requiresDiagram,
   onDiagramUpload,
+  onDiagramMarksChange,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
+  const [diagramMarksInput, setDiagramMarksInput] = useState<string>('');
+  const [diagramMarksError, setDiagramMarksError] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -119,6 +123,49 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
                   />
                 </div>
               )}
+
+              {/* Diagram marks input — always visible under the upload field */}
+              <div className="mt-4 pt-3 border-t border-amber-200">
+                <label className="block text-sm font-semibold text-amber-800 mb-1">
+                  Marks allocated to diagram
+                </label>
+                <p className="text-xs text-amber-700 mb-2">
+                  Enter how many of the {marks} marks are for the diagram.
+                  The remaining marks will be for the written answer.
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  max={marks - 1}
+                  value={diagramMarksInput}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setDiagramMarksInput(raw);
+                    const num = parseInt(raw, 10);
+                    if (isNaN(num) || num < 1 || num >= marks) {
+                      setDiagramMarksError(`Must be between 1 and ${marks - 1}`);
+                      onDiagramMarksChange(questionNum, null);
+                    } else {
+                      setDiagramMarksError('');
+                      onDiagramMarksChange(questionNum, num);
+                    }
+                  }}
+                  placeholder={`e.g. ${Math.round(marks / 2)}`}
+                  className={`w-32 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+                    diagramMarksError
+                      ? 'border-red-400 focus:ring-red-200'
+                      : 'border-amber-300 focus:ring-amber-200'
+                  } bg-white`}
+                />
+                {diagramMarksError && (
+                  <p className="text-xs text-red-600 mt-1">{diagramMarksError}</p>
+                )}
+                {!diagramMarksError && diagramMarksInput && (
+                  <p className="text-xs text-green-700 mt-1">
+                    ✓ Diagram: {diagramMarksInput} marks · Written answer: {marks - parseInt(diagramMarksInput, 10)} marks
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-# MongoDB client – URI loaded from settings (which reads from .env)
+# MongoDB client — URI loaded from settings
 client = MongoClient(settings.MONGO_URI)
 db = client['ScriptSense']
 collection = db['students']
@@ -106,7 +106,6 @@ def get_registered_subjects(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST allowed'}, status=405)
     try:
-        # Parse request body
         try:
             data = json.loads(request.body)
             usn = data.get('usn')
@@ -135,29 +134,22 @@ def get_registered_subjects(request):
                 exam_type = record.get("exam_type", "Unknown")
                 
                 if subject_name not in subject_data:
-                    # Initialize subject data structure
                     subject_data[subject_name] = {
                         "subject": subject_name,
-                        "sem": "1",  # Default value, adjust if you have semester info
+                        "sem": "1",  # default; no semester info stored yet
                         "paperTypes": []
                     }
-                
-                # Add exam type if it doesn't exist already
+
                 if exam_type not in subject_data[subject_name]["paperTypes"]:
                     subject_data[subject_name]["paperTypes"].append(exam_type)
         
-        # Extract simple subject names for DashboardPage
+        # subjects: flat list for DashboardPage; subjectsData: full objects for SubjectPage.
         subject_names = list(subject_data.keys())
-        
-        # Convert subject_data to list for SubjectPage
         subjects_with_details = list(subject_data.values())
-        
-        # The response format that works for both components
         response_data = {
             'subjects': subject_names,
             'subjectsData': subjects_with_details
         }
-        
         logger.debug(f"Response data: {response_data}")
         return JsonResponse(response_data)
 
@@ -248,7 +240,6 @@ def add_or_get_feedback_marks(request):
         try:
             data = json.loads(request.body)
 
-            # Delegate entirely to the shared helper
             ok, msg = save_student_feedback(data)
             if ok:
                 return JsonResponse({'message': msg})
@@ -267,22 +258,11 @@ def add_or_get_feedback_marks(request):
         if not subject or not exam_type:
             return JsonResponse({'error': 'subject and exam_type are required'}, status=400)
 
-        # Find the document matching the query criteria
-        query = {
-            "usn": usn,
-            "subject": subject,
-            "exam_type": exam_type
-        }
-        
-        result = collection.find_one(query, {"_id": 0})
+        result = collection.find_one({"usn": usn, "subject": subject, "exam_type": exam_type}, {"_id": 0})
         if not result:
             return JsonResponse({'error': 'Not found'}, status=404)
 
-        # Return the feedbacks array
-        return JsonResponse({
-
-            "feedbacks": result.get("feedbacks", [])
-        })
+        return JsonResponse({"feedbacks": result.get("feedbacks", [])})
 
 
 
