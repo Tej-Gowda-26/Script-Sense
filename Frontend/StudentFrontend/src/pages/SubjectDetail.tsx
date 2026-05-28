@@ -8,7 +8,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { studentService } from '../services/api';
 
-// ── Full feedback shape (matches all 14 fields from the grading engine) ──
+// ── Full feedback shape (matches all fields from the grading engine) ──
 interface Feedback {
   qno: string | number;
   question: string;
@@ -21,6 +21,7 @@ interface Feedback {
   completeness_assessment?: string;
   relevance_assessment?: string;
   depth_assessment?: string;
+  diagram_assessment?: string;   // populated for diagram/split-mode questions
   correct_points_found?: string[];
   missing_points?: string[];
   incorrect_points?: string[];
@@ -156,12 +157,16 @@ const FeedbackCard: React.FC<{ item: Feedback; index: number }> = ({ item, index
         <div className="mt-3 border-t border-gray-100 pt-3 space-y-3">
           {/* Assessment pills */}
           {(item.correctness_assessment || item.completeness_assessment ||
-            item.relevance_assessment   || item.depth_assessment) && (
+            item.relevance_assessment   || item.depth_assessment ||
+            item.diagram_assessment) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <AssessmentPill label="Correctness"  text={item.correctness_assessment} />
               <AssessmentPill label="Completeness" text={item.completeness_assessment} />
               <AssessmentPill label="Relevance"    text={item.relevance_assessment} />
               <AssessmentPill label="Depth"        text={item.depth_assessment} />
+              {item.diagram_assessment && (
+                <AssessmentPill label="Diagram"    text={item.diagram_assessment} />
+              )}
             </div>
           )}
 

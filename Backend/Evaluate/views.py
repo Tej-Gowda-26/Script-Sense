@@ -168,6 +168,40 @@ Return ONLY a valid JSON object with EXACTLY these fields — no extra text:
   "used_rag_reference": <true|false>
 }"""
 
+GRADING_SYSTEM_PROMPT_DIAGRAM_ONLY = """You are an expert academic examiner. Your job is to evaluate a student's HAND-DRAWN DIAGRAM against a reference diagram and award marks fairly.
+
+This question ONLY requires a diagram — there is no written/text answer to assess.
+
+## How to Judge the Diagram
+- Structure — are major components drawn correctly?
+- Labels — are labels present and accurate?
+- Connections — are relationships between parts correct?
+- Completeness — are key elements missing?
+
+## Scoring Rules
+- Award marks for correct visual elements even if the diagram is not perfect.
+- Deduct marks only for wrong, missing, or incorrect parts.
+- A partial diagram MUST receive partial marks.
+
+## Output Format
+Return ONLY a valid JSON object with EXACTLY these fields — no extra text:
+{
+  "marks_awarded": <number, can be decimal>,
+  "max_marks": <integer>,
+  "correctness_assessment": "<one concise sentence about overall correctness>",
+  "completeness_assessment": "<one concise sentence about what is drawn vs missing>",
+  "relevance_assessment": "<one concise sentence — is the diagram for the right topic?>",
+  "depth_assessment": "<one concise sentence about diagram detail/quality>",
+  "diagram_assessment": "<one concise sentence specifically about the drawn diagram>",
+  "correct_points_found": ["<point1>", "<point2>"],
+  "missing_points": ["<point1>", "<point2>"],
+  "incorrect_points": ["<point1>", "<point2>"],
+  "partial_credit_reasoning": "<explanation of how marks were calculated from the diagram>",
+  "final_feedback": "<constructive, student-facing feedback about the diagram>",
+  "confidence": "<high|medium|low>",
+  "used_rag_reference": false
+}"""
+
 
 def _build_user_prompt(question, answer, total_marks, retrieved_context=None, has_diagram=False):
     """Build the user-turn prompt for holistic (legacy) grading mode."""
@@ -286,6 +320,10 @@ def grade_questions(questions: list, default_total=None) -> list:
         penalty_note   = ''     # appended to feedback on vision fallback
         use_split_mode = False   # True when teacher set diagram_marks
 
+        # Detect diagram intent early so the empty-answer guard can be skipped
+        # for diagram-only questions where the student drew (but wrote nothing).
+        _is_diag_q_early = bool(ref_b64) or _is_diagram_only(question or '')
+
         if not question or not total_marks:
             results.append({
                 'index': idx,
@@ -296,7 +334,14 @@ def grade_questions(questions: list, default_total=None) -> list:
         answer_text_check = (
             ' '.join(answer).strip() if isinstance(answer, list) else str(answer).strip()
         )
-        if not answer_text_check or answer_text_check.lower() in ('no answer extracted', 'none', 'n/a', ''):
+        _no_text = (
+            not answer_text_check
+            or answer_text_check.lower() in ('no answer extracted', 'none', 'n/a', '')
+        )
+        # For diagram-only questions where the student has drawn something,
+        # skip the empty-text early return — visual grading will handle it.
+        # For all other question types an empty text answer is 0 marks.
+        if _no_text and not (_is_diag_q_early and has_student_diagram):
             results.append({
                 'index': idx,
                 'qno':   q.get('qno', idx + 1),
@@ -309,6 +354,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 'completeness_assessment':  'Answer is absent.',
                 'relevance_assessment':     'Cannot assess — no answer.',
                 'depth_assessment':         'Cannot assess — no answer.',
+                'diagram_assessment':       '',
                 'correct_points_found':     [],
                 'missing_points':           ['Full answer required.'],
                 'incorrect_points':         [],
@@ -327,45 +373,51 @@ def grade_questions(questions: list, default_total=None) -> list:
         # Diagram routing: resolve grading mode (split vs legacy) and prompt structure.
         has_theory_answer = len(answer_text_check) > _HAS_THEORY_THRESHOLD
 
-        if has_ref_diagram:
+        # --- Step A: check diagram-only BEFORE checking has_ref_diagram ---
+        # This ensures "Draw a diagram" questions always zero-out correctly even
+        # when the teacher did not upload a reference image.
+        if _is_diagram_only(question):
+            if not has_student_diagram:
+                logger.info(f"Q{idx+1}: Diagram-only question with no student diagram → 0 marks")
+                results.append({
+                    'index': idx,
+                    'qno':   q.get('qno', idx + 1),
+                    'question': question,
+                    'answer':   '',
+                    'score': 0,
+                    'total': total_marks,
+                    'feedback': 'The question required a diagram, but no diagram was detected in your answer sheet.',
+                    'correctness_assessment':   'No diagram provided.',
+                    'completeness_assessment':  'Diagram is absent.',
+                    'relevance_assessment':     'Cannot assess — no diagram.',
+                    'depth_assessment':         'Cannot assess — no diagram.',
+                    'diagram_assessment':       'No diagram found.',
+                    'correct_points_found':     [],
+                    'missing_points':           ['Required diagram was not drawn.'],
+                    'incorrect_points':         [],
+                    'partial_credit_reasoning': 'Zero marks awarded because this question exclusively requires a diagram and none was detected.',
+                    'confidence': 'high',
+                    'used_rag_reference': False,
+                })
+                if idx < len(questions) - 1:
+                    time.sleep(INTER_QUESTION_DELAY_NORMAL)
+                continue
+            else:
+                # Student drew a diagram — grade it visually with diagram-only prompt.
+                has_diagram = True
+                logger.info(f"Q{idx+1}: Diagram-only question — visual grading (diagram-only prompt)")
+
+        elif has_ref_diagram:
             if diagram_marks_val is not None:
-                # Split mode: grade text out of theory_marks_val, diagram separately.
-                theory_marks_val = total_marks - diagram_marks_val
+                # Split mode: teacher specified separate marks for text and diagram.
+                # theory_marks_val is clamped to >= 0 in case of data inconsistency.
+                theory_marks_val = max(0, total_marks - diagram_marks_val)
                 use_split_mode   = True
                 has_diagram      = True
                 logger.info(
                     f"Q{idx+1}: Split mode — text={theory_marks_val}m, "
                     f"diagram={diagram_marks_val}m (teacher-defined)"
                 )
-
-            elif _is_diagram_only(question):
-                # Legacy diagram-only question — hard zero if no diagram detected.
-                if not has_student_diagram:
-                    logger.info(f"Q{idx+1}: Diagram-only question with no student diagram → 0 marks")
-                    results.append({
-                        'index': idx,
-                        'qno':   q.get('qno', idx + 1),
-                        'question': question,
-                        'answer':   '',
-                        'score': 0,
-                        'total': total_marks,
-                        'feedback': 'The question required a diagram, but no diagram was detected in your answer sheet.',
-                        'correctness_assessment':   'No diagram provided.',
-                        'completeness_assessment':  'Diagram is absent.',
-                        'relevance_assessment':     'Cannot assess — no diagram.',
-                        'depth_assessment':         'Cannot assess — no diagram.',
-                        'correct_points_found':     [],
-                        'missing_points':           ['Required diagram was not drawn.'],
-                        'incorrect_points':         [],
-                        'partial_credit_reasoning': 'Zero marks awarded because this question exclusively requires a diagram and none was detected.',
-                        'confidence': 'high',
-                        'used_rag_reference': False,
-                    })
-                    if idx < len(questions) - 1:
-                        time.sleep(INTER_QUESTION_DELAY_NORMAL)
-                    continue
-                else:
-                    has_diagram = True  # diagram present → grade visually
 
             else:
                 # Legacy mixed question (text + diagram, no mark split): grade holistically.
@@ -403,11 +455,27 @@ def grade_questions(questions: list, default_total=None) -> list:
                     f"grading text out of {theory_marks_val}m; diagram=0"
                 )
         else:
+            is_diag_only_q = _is_diagram_only(question)
             user_prompt = _build_user_prompt(
                 question, answer, total_marks, retrieved_context, has_diagram=has_diagram
             )
-            active_system_prompt = GRADING_SYSTEM_PROMPT
-            if has_diagram:
+            if is_diag_only_q and has_diagram:
+                # Diagram-only question with student diagram: use dedicated prompt
+                active_system_prompt = GRADING_SYSTEM_PROMPT_DIAGRAM_ONLY
+                img_blocks: list = [
+                    {"type": "text", "text": user_prompt},
+                    {"type": "text", "text": "Student's Drawn Diagram:"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{student_b64}"}},
+                ]
+                if ref_b64:
+                    img_blocks.insert(1, {"type": "text",      "text": "Reference Diagram (correct answer):"})
+                    img_blocks.insert(2, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{ref_b64}"}})
+                    logger.info(f"Q{idx+1}: Diagram-only grading with reference image")
+                else:
+                    logger.info(f"Q{idx+1}: Diagram-only grading (no reference image)")
+                user_content = img_blocks
+            elif has_diagram:
+                active_system_prompt = GRADING_SYSTEM_PROMPT
                 user_content = [
                     {"type": "text",      "text": user_prompt},
                     {"type": "text",      "text": "Reference Diagram (correct answer):"},
@@ -417,6 +485,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 ]
                 logger.info(f"Q{idx+1}: Legacy multimodal grading (text + reference diagram + student diagram)")
             else:
+                active_system_prompt = GRADING_SYSTEM_PROMPT
                 user_content = user_prompt
 
         headers = {
@@ -637,6 +706,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 'completeness_assessment':  grading.get('completeness_assessment', ''),
                 'relevance_assessment':     grading.get('relevance_assessment', ''),
                 'depth_assessment':         grading.get('depth_assessment', ''),
+                'diagram_assessment':       grading.get('diagram_assessment', ''),
                 'correct_points_found':     _as_list(grading.get('correct_points_found')),
                 'missing_points':           _as_list(grading.get('missing_points')),
                 'incorrect_points':         _as_list(grading.get('incorrect_points')),
@@ -660,6 +730,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 'completeness_assessment':  '',
                 'relevance_assessment':     '',
                 'depth_assessment':         '',
+                'diagram_assessment':       '',
                 'correct_points_found':     [],
                 'missing_points':           [],
                 'incorrect_points':         [],

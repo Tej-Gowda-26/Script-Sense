@@ -161,7 +161,10 @@ def get_registered_subjects(request):
 def save_student_feedback(payload: dict) -> tuple[bool, str]:
     """Persist graded feedback and answer sheets to MongoDB.
 
-    Called directly by ImagetoText (no HTTP round-trip).
+    Called INTERNALLY by the ImagetoText grading pipeline (no HTTP round-trip).
+    The student frontend is READ-ONLY — it never calls this function directly.
+    Only the teacher-triggered grading pipeline writes feedback records.
+
     Payload keys: usn, subject, exam_type, feedback (list), answer_sheets (list).
     Returns (success, message).
     """
@@ -193,11 +196,12 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
                 'feedback': item.get('feedback', ''),
                 'score':    item.get('score', 0),
                 'total':    int(item.get('total', 0)),
-                # Extended assessment fields
+                # Extended assessment fields from the grading engine
                 'correctness_assessment':   item.get('correctness_assessment', ''),
                 'completeness_assessment':  item.get('completeness_assessment', ''),
                 'relevance_assessment':     item.get('relevance_assessment', ''),
                 'depth_assessment':         item.get('depth_assessment', ''),
+                'diagram_assessment':       item.get('diagram_assessment', ''),
                 'correct_points_found':     item.get('correct_points_found', []),
                 'missing_points':           item.get('missing_points', []),
                 'incorrect_points':         item.get('incorrect_points', []),
@@ -233,7 +237,10 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
         return False, str(e)
 
 
-# ---- Add or Get Feedback & Marks ----
+# ---- Student feedback endpoint ----
+# GET  — called by the student frontend to view graded feedback (read-only).
+# POST — internal use only; the grading pipeline calls save_student_feedback()
+#         directly. Students never POST to this endpoint.
 @csrf_exempt
 def add_or_get_feedback_marks(request):
     if request.method == 'POST':

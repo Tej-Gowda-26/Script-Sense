@@ -6,6 +6,9 @@ import pymongo
 from bson import Binary
 import json
 
+# ── Teacher-only endpoint ──────────────────────────────────────────────────
+# This view is called exclusively from the Teacher Frontend.
+# Students have no upload capability — their interface is read-only.
 client = pymongo.MongoClient(settings.MONGO_URI)
 db = client['ScriptSense']
 question_papers_collection = db['QuestionPaper']
@@ -55,6 +58,16 @@ def upload_question_paper_json(request):
                 if diagram_marks < 1 or diagram_marks >= int(marks):
                     return JsonResponse(
                         {'error': f'diagram_marks for Q{qno} must be between 1 and {int(marks) - 1}.'},
+                        status=400
+                    )
+                # A reference diagram image is required when diagram_marks is set
+                # so the grading engine can perform visual split-mode evaluation.
+                if not request.FILES.get(f'image_{qno}'):
+                    return JsonResponse(
+                        {'error': (
+                            f'Q{qno} has diagram_marks set but no reference image was uploaded. '
+                            f'Please upload a reference diagram image (image_{qno}).'
+                        )},
                         status=400
                     )
 

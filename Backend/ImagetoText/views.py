@@ -42,6 +42,12 @@ mongo_client = MongoClient(settings.MONGO_URI)
 db = mongo_client['ScriptSense']
 questions_collection = db['QuestionPaper']
 
+# ── Teacher-only endpoint ──────────────────────────────────────────────────
+# process_exam_images() is invoked exclusively by the Teacher Frontend when
+# the teacher uploads a student's physical answer sheet for grading.
+# Students do NOT upload anything — their frontend only reads stored results.
+# The grading pipeline (OCR → RAG → diagram detection → evaluate) runs here.
+
 
 def encode_image(image_file):
     return base64.b64encode(image_file.read()).decode("utf-8")
@@ -464,6 +470,7 @@ def process_exam_images(request):
                     "completeness_assessment":  result.get("completeness_assessment", ""),
                     "relevance_assessment":     result.get("relevance_assessment", ""),
                     "depth_assessment":         result.get("depth_assessment", ""),
+                    "diagram_assessment":       result.get("diagram_assessment", ""),
                     "correct_points_found":     result.get("correct_points_found", []),
                     "missing_points":           result.get("missing_points", []),
                     "incorrect_points":         result.get("incorrect_points", []),
