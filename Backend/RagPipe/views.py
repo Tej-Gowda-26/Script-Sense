@@ -216,7 +216,7 @@ def similarity_search_view(request):
         with open(meta_file, "rb") as f:
             meta = pickle.load(f)
 
-        pages = meta["pages"]
+        pages = meta.get("pages", [])
         query_embedding = embedding_model.encode([query])
         query_embedding = np.array(query_embedding).astype("float32")
         # Must normalize before searching IndexFlatIP (cosine similarity requires unit vectors)
@@ -226,7 +226,7 @@ def similarity_search_view(request):
 
         results = []
         for idx, distance in zip(I[0], D[0]):
-            if idx != -1:
+            if idx != -1 and idx < len(pages):
                 page_data = pages[idx]
                 results.append({
                     "page_number": page_data["page_number"],

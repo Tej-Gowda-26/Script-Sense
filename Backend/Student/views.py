@@ -195,7 +195,7 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
                 'answer':   item.get('answer', ''),
                 'feedback': item.get('feedback', ''),
                 'score':    item.get('score', 0),
-                'total':    int(item.get('total', 0)),
+                'total':    int(float(item.get('total', 0))),
                 # Extended assessment fields from the grading engine
                 'correctness_assessment':   item.get('correctness_assessment', ''),
                 'completeness_assessment':  item.get('completeness_assessment', ''),
@@ -270,6 +270,9 @@ def add_or_get_feedback_marks(request):
             return JsonResponse({'error': 'Not found'}, status=404)
 
         return JsonResponse({"feedbacks": result.get("feedbacks", [])})
+
+    else:
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
 
 
 

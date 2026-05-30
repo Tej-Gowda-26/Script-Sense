@@ -398,7 +398,11 @@ def process_exam_images(request):
         logger.info(f"Payload prepared: {len(refined_payload)} questions, RAG={'yes' if use_rag else 'no'}")
 
         logger.info("Calling grade_questions()...")
-        grading_results = grade_questions(refined_payload, default_total=int(total) if total else 10)
+        try:
+            default_total_int = int(total) if total else 10
+        except (ValueError, TypeError):
+            default_total_int = 10
+        grading_results = grade_questions(refined_payload, default_total=default_total_int)
         # grade_questions() uses per-question total_marks from DB when available;
         # default_total is the fallback for records without stored marks.
         response_data   = {'results': grading_results}
@@ -419,7 +423,7 @@ def process_exam_images(request):
                     logger.warning(f"Error result at index {idx}: {result.get('error')} — inserting zero-score placeholder")
                     q_entry = refined_payload[idx] if idx < len(refined_payload) else {}
                     q_qno   = q_entry.get("qno", idx + 1)
-                    q_marks = q_entry.get("total_marks") or (int(total) if total else 0)
+                    q_marks = q_entry.get("total_marks") or (int(float(total)) if total else 0)
                     feedback_list.append({
                         "index":   idx,
                         "qno":     q_qno,
@@ -427,7 +431,7 @@ def process_exam_images(request):
                         "answer":   "",
                         "feedback": f"Grading failed for this question ({result.get('error', 'unknown error')}). Please review manually.",
                         "score":    0,
-                        "total":    int(q_marks),
+                        "total":    int(float(q_marks)),
                         "correctness_assessment": "", "completeness_assessment": "",
                         "relevance_assessment":   "", "depth_assessment": "",
                         "correct_points_found":   [], "missing_points": [], "incorrect_points": [],
@@ -464,7 +468,7 @@ def process_exam_images(request):
                     "answer":   answer_str,
                     "feedback": result.get("feedback", ""),
                     "score":    float(result.get("score", 0)),
-                    "total":    int(q_total) if q_total else 0,
+                    "total":    int(float(q_total)) if q_total else 0,
                     # Extended assessment fields from the new grading engine
                     "correctness_assessment":   result.get("correctness_assessment", ""),
                     "completeness_assessment":  result.get("completeness_assessment", ""),

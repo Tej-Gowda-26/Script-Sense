@@ -141,6 +141,16 @@ const FeedbackCard: React.FC<{ item: Feedback; index: number }> = ({ item, index
         </p>
       </div>
 
+      {/* Diagram Assessment — always visible, matching teacher portal */}
+      {item.diagram_assessment && (
+        <div className="mt-3">
+          <p className="text-xs font-medium text-gray-500 mb-1">Diagram Assessment</p>
+          <p className="text-sm text-gray-800 bg-amber-50 p-2.5 rounded-md border-l-4 border-amber-400 leading-relaxed">
+            {item.diagram_assessment}
+          </p>
+        </div>
+      )}
+
       {/* Expand / collapse trigger */}
       {hasDetail && (
         <button
@@ -157,16 +167,12 @@ const FeedbackCard: React.FC<{ item: Feedback; index: number }> = ({ item, index
         <div className="mt-3 border-t border-gray-100 pt-3 space-y-3">
           {/* Assessment pills */}
           {(item.correctness_assessment || item.completeness_assessment ||
-            item.relevance_assessment   || item.depth_assessment ||
-            item.diagram_assessment) && (
+            item.relevance_assessment   || item.depth_assessment) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <AssessmentPill label="Correctness"  text={item.correctness_assessment} />
               <AssessmentPill label="Completeness" text={item.completeness_assessment} />
               <AssessmentPill label="Relevance"    text={item.relevance_assessment} />
               <AssessmentPill label="Depth"        text={item.depth_assessment} />
-              {item.diagram_assessment && (
-                <AssessmentPill label="Diagram"    text={item.diagram_assessment} />
-              )}
             </div>
           )}
 

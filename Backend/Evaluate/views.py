@@ -348,7 +348,7 @@ def grade_questions(questions: list, default_total=None) -> list:
                 'question': question,
                 'answer':   answer_text_check,
                 'score': 0,
-                'total': int(total_marks) if str(total_marks).isdigit() else 0,
+                'total': (lambda x: int(float(x)) if x is not None else 0)(total_marks),
                 'feedback': 'No answer was provided for this question.',
                 'correctness_assessment':   'No answer provided.',
                 'completeness_assessment':  'Answer is absent.',

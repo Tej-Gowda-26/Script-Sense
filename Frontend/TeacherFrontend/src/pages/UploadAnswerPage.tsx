@@ -15,6 +15,7 @@ type EvaluationResult = {
   completeness_assessment: string;
   relevance_assessment: string;
   depth_assessment: string;
+  diagram_assessment?: string;
   correct_points_found: string[];
   missing_points: string[];
   incorrect_points: string[];
@@ -159,6 +160,7 @@ const UploadAnswerPage = () => {
             score={res.score}
             maxScore={Number(res.total ?? 10)}
             feedback={res.feedback}
+            diagramFeedback={res.diagram_assessment}
             correctness_assessment={res.correctness_assessment}
             completeness_assessment={res.completeness_assessment}
             relevance_assessment={res.relevance_assessment}
