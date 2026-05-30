@@ -15,7 +15,6 @@ const Login: React.FC = () => {
   const validateForm = () => {
     if (!usn.trim()) { setError('USN is required'); return false; }
     if (!password)   { setError('Password is required'); return false; }
-    // USN format: YY + ET + DD + PPP + RRR  (e.g. 22ETIS411050)
     if (!/^\d{2}ET[A-Z]{2}\d{6}$/.test(usn)) {
       setError('Invalid USN format');
       return false;

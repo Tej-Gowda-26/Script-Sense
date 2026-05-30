@@ -308,7 +308,6 @@ Return ONLY the raw JSON object, no markdown, no extra text.
         qno,
         question,
         marks,
-        // Include diagram_marks only for diagram questions where a value was entered
         ...(questionRequiresDiagram[qno] && diagramMarks[qno] != null
           ? { diagram_marks: diagramMarks[qno] }
           : {}),
@@ -371,7 +370,6 @@ Return ONLY the raw JSON object, no markdown, no extra text.
 
   return (
     <div className="max-w-3xl mx-auto">
-      {/* Page header */}
       <div className="page-header">
         <h2>{step === 1 ? 'Upload Question Paper' : 'Review Questions'}</h2>
         <p>{step === 1 ? 'Upload an image of the question paper to extract questions.' : 'Review extracted questions before saving.'}</p>

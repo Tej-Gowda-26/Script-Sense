@@ -30,7 +30,6 @@ except Exception:
     def save_student_feedback(payload):
         return False, 'save_student_feedback unavailable'
 
-# Use Django's logger — do NOT call logging.basicConfig() inside Django apps
 logger = logging.getLogger(__name__)
 
 # OCR model chain — only Scout is confirmed to accept image_url blocks on Groq.
@@ -41,12 +40,6 @@ _OCR_MODEL_CHAIN = [
 mongo_client = MongoClient(settings.MONGO_URI)
 db = mongo_client['ScriptSense']
 questions_collection = db['QuestionPaper']
-
-# ── Teacher-only endpoint ──────────────────────────────────────────────────
-# process_exam_images() is invoked exclusively by the Teacher Frontend when
-# the teacher uploads a student's physical answer sheet for grading.
-# Students do NOT upload anything — their frontend only reads stored results.
-# The grading pipeline (OCR → RAG → diagram detection → evaluate) runs here.
 
 
 def encode_image(image_file):
@@ -345,7 +338,6 @@ def process_exam_images(request):
         
         refined_payload = parse_and_add_questions(extracted_text, subject, exam_type)
 
-        # Inject RAG context per question when a textbook index is available.
         if use_rag:
             logger.info(f"RAG enabled — querying index '{index_file}' for {len(refined_payload)} questions")
             for q in refined_payload:
@@ -403,8 +395,7 @@ def process_exam_images(request):
         except (ValueError, TypeError):
             default_total_int = 10
         grading_results = grade_questions(refined_payload, default_total=default_total_int)
-        # grade_questions() uses per-question total_marks from DB when available;
-        # default_total is the fallback for records without stored marks.
+        # default_total is the fallback for questions without per-question marks in the DB.
         response_data   = {'results': grading_results}
         logger.info(f"Grading complete: {len(grading_results)} results")
         
@@ -487,7 +478,6 @@ def process_exam_images(request):
         
         logger.info(f"Generated feedback list: {feedback_list}")
         
-        # answer_sheets: base64 of each uploaded page, stored for student review.
         student_payload = {
             'usn': usn,
             'subject': subject,

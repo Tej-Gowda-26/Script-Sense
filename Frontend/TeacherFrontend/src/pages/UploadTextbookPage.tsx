@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 
-// ── Types ────────────────────────────────────────────────────────────────────
 type RagStatus = 'idle' | 'uploading' | 'error';
 
 interface Textbook {
@@ -16,10 +15,9 @@ interface Textbook {
   uploadedAt: string;
 }
 
-const LS_LIST   = 'rag_textbooks';   // persisted list of all indexed textbooks
-const LS_ACTIVE = 'rag_active_name'; // name of the currently active textbook
+const LS_LIST   = 'rag_textbooks';
+const LS_ACTIVE = 'rag_active_name';
 
-// These three keys are read by UploadAnswerPage and kept in sync with the active textbook.
 const LS_INDEX = 'rag_index_file';
 const LS_META  = 'rag_meta_file';
 const LS_PDF   = 'rag_pdf_file';
@@ -38,7 +36,6 @@ function activateName(name: string, list: Textbook[]) {
   localStorage.setItem(LS_INDEX, book.index_file);
   localStorage.setItem(LS_META, book.meta_file);
   localStorage.setItem(LS_PDF, book.pdf_file);
-  // Legacy keys (kept for compatibility)
   localStorage.setItem('rag_indexed_name', name);
 }
 function deactivate() {
@@ -49,7 +46,6 @@ function deactivate() {
   localStorage.removeItem('rag_indexed_name');
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
 const UploadTextbookPage = () => {
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [activeName, setActiveName] = useState('');
@@ -58,11 +54,9 @@ const UploadTextbookPage = () => {
   const [ragError, setRagError] = useState('');
   const [viewerBook, setViewerBook] = useState<Textbook | null>(null);
 
-  // Load from localStorage on mount; migrate legacy single-textbook entries.
   useEffect(() => {
     let list = loadList();
 
-    // Migrate legacy single-textbook localStorage entries
     const legacyName = localStorage.getItem('rag_indexed_name');
     const legacyIndex = localStorage.getItem(LS_INDEX);
     const legacyMeta = localStorage.getItem(LS_META);
@@ -122,12 +116,12 @@ const UploadTextbookPage = () => {
         uploadedAt: new Date().toISOString(),
       };
 
-      // Replace if same name, else prepend
+      // Replace if same name, else prepend.
       const updated = [newBook, ...textbooks.filter(b => b.name !== newBook.name)];
       saveList(updated);
       setTextbooks(updated);
 
-      // Auto-activate if this is the first book or it was previously active
+      // Auto-activate if no book is currently active or if re-uploading the active one.
       if (!activeName || activeName === newBook.name) {
         activateName(newBook.name, updated);
         setActiveName(newBook.name);
@@ -136,7 +130,6 @@ const UploadTextbookPage = () => {
       setPdfFile(null);
       setRagStatus('idle');
 
-      // Reset the file input
       const input = document.getElementById('textbook-file-input') as HTMLInputElement;
       if (input) input.value = '';
 
@@ -173,17 +166,14 @@ const UploadTextbookPage = () => {
     setViewerBook(prev => prev?.name === book.name ? null : book);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-4xl mx-auto">
 
-      {/* Page heading */}
       <div className="page-header">
         <h2>Upload Textbook</h2>
         <p>Upload subject textbooks or reference PDFs. The active textbook is used for RAG-assisted grading on every evaluation.</p>
       </div>
 
-      {/* Upload card */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Upload className="h-4 w-4 text-blue-600" />
@@ -244,7 +234,6 @@ const UploadTextbookPage = () => {
 
             return (
               <div key={book.name} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                {/* Book row */}
                 <div className="flex items-center gap-4 p-4">
                   <FileText className={`h-8 w-8 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-300'}`} />
 
@@ -264,9 +253,7 @@ const UploadTextbookPage = () => {
                     <p className="text-xs text-gray-400 mt-0.5">Uploaded {uploadDate}</p>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {/* View toggle */}
                     {viewerUrl ? (
                       <button
                         onClick={() => toggleViewer(book)}
@@ -277,8 +264,6 @@ const UploadTextbookPage = () => {
                         {isViewing ? 'Hide' : 'View'}
                       </button>
                     ) : null}
-
-                    {/* Activate / deactivate */}
                     {isActive ? (
                       <button
                         onClick={handleDeactivate}
@@ -297,7 +282,6 @@ const UploadTextbookPage = () => {
                       </button>
                     )}
 
-                    {/* Delete */}
                     <button
                       onClick={() => handleDelete(book)}
                       title="Remove from list"

@@ -7,8 +7,6 @@ from bson import Binary
 import json
 
 # ── Teacher-only endpoint ──────────────────────────────────────────────────
-# This view is called exclusively from the Teacher Frontend.
-# Students have no upload capability — their interface is read-only.
 client = pymongo.MongoClient(settings.MONGO_URI)
 db = client['ScriptSense']
 question_papers_collection = db['QuestionPaper']
@@ -17,7 +15,6 @@ question_papers_collection = db['QuestionPaper']
 @require_http_methods(["POST"])
 def upload_question_paper_json(request):
     try:
-        # 1. Parse and validate the request
         questions_json = request.POST.get('questions')
         if not questions_json:
             return JsonResponse({'error': 'Missing questions field.'}, status=400)
@@ -31,7 +28,6 @@ def upload_question_paper_json(request):
         if not exam_type or not subject:
             return JsonResponse({'error': 'Missing exam_type or subject field.'}, status=400)
 
-        # 2. Build per-question documents
         processed_questions = []
 
         for q in questions:
@@ -46,7 +42,6 @@ def upload_question_paper_json(request):
                     status=400
                 )
 
-            # Validate diagram_marks when provided
             if diagram_marks is not None:
                 try:
                     diagram_marks = int(diagram_marks)
@@ -60,8 +55,7 @@ def upload_question_paper_json(request):
                         {'error': f'diagram_marks for Q{qno} must be between 1 and {int(marks) - 1}.'},
                         status=400
                     )
-                # A reference diagram image is required when diagram_marks is set
-                # so the grading engine can perform visual split-mode evaluation.
+                # A reference diagram image is required when diagram_marks is set.
                 if not request.FILES.get(f'image_{qno}'):
                     return JsonResponse(
                         {'error': (
@@ -71,7 +65,6 @@ def upload_question_paper_json(request):
                         status=400
                     )
 
-            # Optional reference diagram image for this question
             image_file = request.FILES.get(f'image_{qno}')
             image_data = None
             if image_file:

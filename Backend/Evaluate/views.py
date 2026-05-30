@@ -12,23 +12,22 @@ logger = logging.getLogger(__name__)
 # Max RAG context characters injected per question prompt
 MAX_RAG_CHARS = 4000
 
-# Inter-question delays — adaptive based on whether the previous call hit a rate limit
-INTER_QUESTION_DELAY_NORMAL    = 0.3   # seconds
-INTER_QUESTION_DELAY_AFTER_429 = 0.6   # seconds — after a TPM 429 hit
+# Adaptive inter-question delay: longer after a TPM 429 hit.
+INTER_QUESTION_DELAY_NORMAL    = 0.3
+INTER_QUESTION_DELAY_AFTER_429 = 0.6
 
-# Text model chain (high-throughput; tried in order on rate-limit)
+# Text model chain — tried in order on rate-limit.
 GROQ_MODEL_CHAIN = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
 ]
 
-# Vision model chain — must be vision-capable; used for diagram grading.
-# Falls back to text-only if exhausted (see grade_questions).
+# Vision model chain — falls back to text-only if all models are exhausted.
 GROQ_VISION_MODEL_CHAIN = [
     "meta-llama/llama-4-scout-17b-16e-instruct",
 ]
 
-# Minimum OCR characters to consider a student has written a theory answer
+# Minimum OCR chars before a response is treated as a real theory answer.
 _HAS_THEORY_THRESHOLD = 50
 
 # Question starters that signal the question ONLY asks for a diagram (no theory expected)
@@ -741,10 +740,9 @@ def grade_questions(questions: list, default_total=None) -> list:
                 '_raw_response':   content,
             })
 
-        # Adaptive delay: longer after a rate-limit hit, normal otherwise.
         if idx < len(questions) - 1:
             delay = INTER_QUESTION_DELAY_AFTER_429 if _rate_limited_last else INTER_QUESTION_DELAY_NORMAL
-            _rate_limited_last = False   # reset after consuming the extended delay
+            _rate_limited_last = False
             time.sleep(delay)
 
     return results

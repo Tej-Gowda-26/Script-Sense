@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-# MongoDB client — URI loaded from settings
 client = MongoClient(settings.MONGO_URI)
 db = client['ScriptSense']
 collection = db['students']
@@ -196,7 +195,6 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
                 'feedback': item.get('feedback', ''),
                 'score':    item.get('score', 0),
                 'total':    int(float(item.get('total', 0))),
-                # Extended assessment fields from the grading engine
                 'correctness_assessment':   item.get('correctness_assessment', ''),
                 'completeness_assessment':  item.get('completeness_assessment', ''),
                 'relevance_assessment':     item.get('relevance_assessment', ''),
@@ -237,10 +235,8 @@ def save_student_feedback(payload: dict) -> tuple[bool, str]:
         return False, str(e)
 
 
-# ---- Student feedback endpoint ----
-# GET  — called by the student frontend to view graded feedback (read-only).
-# POST — internal use only; the grading pipeline calls save_student_feedback()
-#         directly. Students never POST to this endpoint.
+# GET  — read-only student view of graded feedback.
+# POST — reserved for HTTP callers; the grading pipeline calls save_student_feedback() directly.
 @csrf_exempt
 def add_or_get_feedback_marks(request):
     if request.method == 'POST':
@@ -276,7 +272,6 @@ def add_or_get_feedback_marks(request):
 
 
 
-# ---- Get Answer Sheets (images) ----
 @csrf_exempt
 def get_answer_sheets(request):
     """Return the stored base64 answer sheet images for a student's exam submission."""

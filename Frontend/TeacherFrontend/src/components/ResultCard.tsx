@@ -8,7 +8,6 @@ type ResultItemProps = {
   maxScore: number;
   feedback: string;
   diagramFeedback?: string;
-  // Rich assessment fields returned by the grading engine
   correctness_assessment?: string;
   completeness_assessment?: string;
   relevance_assessment?: string;
@@ -98,7 +97,6 @@ const ResultItem: React.FC<ResultItemProps> = ({
 
   const scoreColor = percentage >= 60 ? 'text-green-600' : 'text-red-600';
 
-  // Determine if there's any rich detail to expand
   const hasDetail =
     correctness_assessment || completeness_assessment ||
     relevance_assessment   || depth_assessment        ||

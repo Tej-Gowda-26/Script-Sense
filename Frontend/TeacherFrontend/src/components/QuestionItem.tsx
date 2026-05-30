@@ -45,7 +45,6 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
 
-      {/* Header row */}
       <div
         className="px-5 py-3.5 cursor-pointer flex items-center justify-between gap-3"
         onClick={() => setIsExpanded(v => !v)}
@@ -124,7 +123,6 @@ const QuestionItem: React.FC<QuestionItemProps> = ({
                 </div>
               )}
 
-              {/* Diagram marks input — always visible under the upload field */}
               <div className="mt-4 pt-3 border-t border-amber-200">
                 <label className="block text-sm font-semibold text-amber-800 mb-1">
                   Marks allocated to diagram

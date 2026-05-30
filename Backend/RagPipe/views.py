@@ -15,12 +15,9 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 
 from sentence_transformers import SentenceTransformer
 
-# Load embedding model once at startup
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Minimum cosine similarity (0–1) for a chunk to be included in RAG context.
-# Chunks below this threshold are discarded — they are off-topic and would
-# dilute the grading prompt rather than improve it.
+# Chunks below this threshold are discarded as off-topic and dropped before grading.
 _RAG_RELEVANCE_THRESHOLD = 0.30
 
 # Text chunking parameters — long PDF pages are split before embedding so
@@ -36,12 +33,9 @@ os.makedirs(TEXTBOOKS_DIR, exist_ok=True)
 def get_rag_context(query: str, index_file: str, meta_file: str, top_k: int = 3) -> str:
     """Retrieve top-k relevant text chunks from a FAISS index for *query*.
 
-    Uses cosine similarity (IndexFlatIP on L2-normalised vectors) so scores
-    are in [0, 1] and directly comparable to _RAG_RELEVANCE_THRESHOLD.
-    Chunks below the threshold are dropped so the grader never receives
-    irrelevant textbook content.
-
-    Returns a single string (chunks separated by '---') or '' on any failure.
+    Scores are cosine similarities (IndexFlatIP on L2-normalised vectors), so chunks
+    below _RAG_RELEVANCE_THRESHOLD are dropped before returning.
+    Returns chunks joined by '---', or '' on any failure.
     """
     try:
         if not query or not os.path.exists(index_file) or not os.path.exists(meta_file):
@@ -101,11 +95,7 @@ def _chunk_text(text: str, chunk_words: int = _CHUNK_WORDS, overlap: int = _CHUN
 
 
 def load_pdf_from_stream(pdf_stream):
-    """Extract per-page text from a PDF stream.
-
-    Pages with no extractable text (blank or image-only) are skipped so
-    the embedding step never processes empty strings.
-    """
+    """Extract per-page text from a PDF stream, skipping blank or image-only pages."""
     pages = []
     try:
         reader = PyPDF2.PdfReader(pdf_stream)
@@ -121,7 +111,6 @@ def embed_pages_and_save(pages, base_name):
     """Embed page chunks, normalise to unit length, and persist a FAISS IndexFlatIP index
     plus a metadata pickle. Inner product on unit vectors == cosine similarity.
     """
-    # Expand every page into chunks
     chunk_records = []
     for page in pages:
         for chunk_text in _chunk_text(page["text"]):
@@ -219,7 +208,6 @@ def similarity_search_view(request):
         pages = meta.get("pages", [])
         query_embedding = embedding_model.encode([query])
         query_embedding = np.array(query_embedding).astype("float32")
-        # Must normalize before searching IndexFlatIP (cosine similarity requires unit vectors)
         faiss.normalize_L2(query_embedding)
 
         D, I = index.search(query_embedding, 5)

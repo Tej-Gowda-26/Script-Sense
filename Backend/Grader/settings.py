@@ -18,8 +18,7 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
-# Legacy — the main pipeline calls save_student_feedback() directly.
-# Retained in case external callers POST feedback via HTTP.
+# Retained for external callers; the main pipeline calls save_student_feedback() directly.
 OTHER_APP_URL = os.environ.get('OTHER_APP_URL', 'http://127.0.0.1:8000/student/feedback/')
 
 
@@ -100,10 +99,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# ── Logging ─────────────────────────────────────────────────────────────────
-# Show INFO+ logs from every ScriptSense app module in the console during dev.
-# Without this block, Django's default config only surfaces WARNING and above,
-# which swallows all logger.info() calls used for pipeline diagnostics.
+# ── Logging ───────────────────────────────────────────────────────────────────
+# Surface INFO+ from all app modules; Django default only shows WARNING.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
