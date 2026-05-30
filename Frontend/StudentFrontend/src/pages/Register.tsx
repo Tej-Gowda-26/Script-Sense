@@ -16,7 +16,7 @@ const Register: React.FC = () => {
     if (!usn.trim()) { setError('USN is required'); return false; }
     if (!password)   { setError('Password is required'); return false; }
     if (password !== confirmPassword) { setError('Passwords do not match'); return false; }
-    // USN format: YY + ET + DD + PPP + RRR  (e.g. 22ETCS018001)
+    // USN format: YY + ET + DD + PPP + RRR  (e.g. 22ETIS411050)
     if (!/^\d{2}ET[A-Z]{2}\d{6}$/.test(usn)) {
       setError('Invalid USN format. Expected Format: Year + ET + Dept + ProgCode + Reg.No');
       return false;

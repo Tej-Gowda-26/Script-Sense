@@ -33,7 +33,7 @@ try:
 except Exception as _idx_err:
     logger.warning(f"Index creation skipped (may already exist): {_idx_err}")
 
-# Expected format: YYETDDnnnrrr  (e.g. 22ETCS018001)
+# Expected format: YYETDDnnnrrr  (e.g. 22ETIS411050)
 def validate_usn(usn):
     if not usn:
         return None
