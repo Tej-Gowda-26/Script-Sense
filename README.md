@@ -1,7 +1,7 @@
 # ScriptSense 📝
 
 > **AI-powered automated grading system for student answer sheets.**  
-> Teachers upload question papers, answer sheets, and textbooks — students log in to view their AI-evaluated feedback and marks. All uploads are teacher-only.
+> Upload question papers, answer sheets, and reference textbooks, run instant AI-powered grading, and let students view their evaluated feedback — all in one unified platform.
 
 ---
 
