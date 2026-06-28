@@ -404,7 +404,3 @@ Auth state is managed via `AuthContext` (USN persisted in `localStorage`). All `
 - Max upload size is **50 MB** (configurable via `DATA_UPLOAD_MAX_MEMORY_SIZE` in `settings.py`).
 - USN format is validated server-side against the pattern `YYETDDnnnrrr` (e.g. `22ETIS411050`).
 - The Groq vision model chain is currently `["meta-llama/llama-4-scout-17b-16e-instruct"]`; the text grading chain falls back from `llama-3.3-70b-versatile` → `llama-3.1-8b-instant` on rate-limit (429).
-
----
-
-*Made with ❤️ by the ScriptSense team.*
