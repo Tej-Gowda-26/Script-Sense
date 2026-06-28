@@ -29,14 +29,15 @@ ScriptSense automates the traditionally manual process of grading student answer
 | Service | Role | Port |
 |---|---|---|
 | **Django Backend** | Core AI grading engine, REST API | `8000` |
-| **Teacher Frontend** | Upload question papers, review results | `5173` |
-| **Student Frontend** | Submit answers, view feedback | `5174` |
+| **Teacher Frontend** | Upload question papers, answer sheets, and textbooks | `5173` |
+| **Student Frontend** | Login, view feedback and marks per subject | `5174` |
 
 **Key capabilities:**
-- 📄 **Question Paper Upload** — Teachers upload question papers (PDF or image) which are parsed and indexed for grading.
-- 🖼️ **Image-to-Text OCR** — Converts handwritten/scanned student answer sheets into machine-readable text using Groq's vision model.
-- 🤖 **AI Grading** — Evaluates extracted answers against model answers using a RAG (Retrieval-Augmented Generation) pipeline powered by Groq LLMs.
-- 💬 **Student Feedback** — Generates detailed, subject-specific feedback and stores results in MongoDB.
+- 📄 **Question Paper Upload** — Teachers define question papers as structured JSON (question text, marks, optional diagram marks + reference image) per subject and exam type. Stored in MongoDB.
+- 🖼️ **Image-to-Text OCR** — Converts handwritten/scanned student answer sheet images to text using Groq's vision LLM (`llama-4-scout`).
+- 🤖 **AI Grading** — Evaluates extracted answers against the question paper using a RAG-augmented Groq LLM chain (`llama-3.3-70b` → `llama-3.1-8b` fallback). Handles diagram detection, rate-limit retry, and per-question scoring.
+- 📚 **RAG Textbook Pipeline** — Teachers upload PDF textbooks; the system chunks, embeds (`all-MiniLM-L6-v2`), and indexes them with FAISS for context-augmented grading.
+- 💬 **Student Feedback** — Stores per-student, per-subject, per-exam-type feedback and marks in MongoDB. Students can log in with their USN to view results.
 
 ---
 
@@ -57,12 +58,12 @@ ScriptSense automates the traditionally manual process of grading student answer
 | python-dotenv | ≥ 1.0.1 | Environment variable loading |
 | pymongo | ≥ 4.6.1 | MongoDB driver |
 | groq | ≥ 0.7.0 | Groq LLM & vision API |
-| requests | ≥ 2.31.0 | Internal HTTP calls |
-| bcrypt | ≥ 4.1.2 | Password hashing |
+| requests | ≥ 2.31.0 | HTTP calls |
+| bcrypt | ≥ 4.1.2 | Student password hashing |
 | sentence-transformers | ≥ 2.6.1 | Text embeddings for RAG |
 | faiss-cpu | ≥ 1.8.0 | Vector similarity search |
 | numpy | ≥ 1.26.4 | Numerical operations |
-| PyPDF2 | ≥ 3.0.1 | PDF parsing |
+| PyPDF2 | ≥ 3.0.1 | PDF text extraction |
 
 ### Frontend (Both Apps)
 | Technology | Version | Purpose |
@@ -73,7 +74,7 @@ ScriptSense automates the traditionally manual process of grading student answer
 | Tailwind CSS | 3.x | Utility-first styling |
 | React Router DOM | 6–7.x | Client-side routing |
 | Lucide React | 0.344.x | Icon library |
-| Axios | 1.x | HTTP client (Student app) |
+| Axios | 1.x | HTTP client (Student app only) |
 
 ---
 
@@ -81,37 +82,75 @@ ScriptSense automates the traditionally manual process of grading student answer
 
 ```
 Script-Sense/
-├── .env                        # Real secrets (git-ignored)
-├── .env.example                # Template — copy this to .env
+├── .env                              # Real secrets (git-ignored)
+├── .env.example                      # Template — copy this to .env
 ├── .gitignore
-├── setup.bat                   # One-time dependency installer (Windows)
-├── start_servers.bat           # Launches all three servers (Windows)
+├── ScriptSense_System_Architecture.png
+├── setup.bat                         # One-time dependency installer (Windows)
+├── start_servers.bat                 # Launches all three servers (Windows)
 ├── README.md
 │
 ├── Backend/
 │   ├── manage.py
 │   ├── requirements.txt
-│   ├── db.sqlite3              # SQLite DB (Django auth/admin)
-│   ├── Grader/                 # Django project settings
+│   ├── db.sqlite3                    # SQLite DB (Django auth/admin only)
+│   ├── Grader/                       # Django project core
 │   │   ├── settings.py
-│   │   ├── urls.py             # Root URL configuration
+│   │   ├── urls.py                   # Root URL routing
 │   │   ├── wsgi.py
 │   │   └── asgi.py
-│   ├── Evaluate/               # AI grading logic
-│   ├── ImagetoText/            # OCR (image → text via Groq vision)
-│   ├── RagPipe/                # RAG pipeline (embeddings + FAISS)
-│   ├── Student/                # Student feedback storage & retrieval
-│   ├── UploadQP/               # Question paper upload & processing
-│   ├── Textbooks/              # Reference material storage
-│   └── venv/                   # Python virtual environment (git-ignored)
+│   ├── Evaluate/                     # AI grading engine
+│   │   ├── views.py                  # grade_questions(), evaluate_answer()
+│   │   └── urls.py                   # POST /evaluate/script/
+│   ├── ImagetoText/                  # OCR + end-to-end pipeline trigger
+│   │   ├── views.py                  # process_exam_images()
+│   │   └── urls.py                   # POST /imageto/text/
+│   ├── RagPipe/                      # RAG pipeline
+│   │   ├── views.py                  # ragify_pdf_view, similarity_search_view, serve_pdf_view
+│   │   └── urls.py                   # POST /rag/pipeline/, /rag/search/, GET /rag/textbook/
+│   ├── Student/                      # Student auth & feedback
+│   │   ├── views.py                  # login, signup, feedback, sheets, subjects
+│   │   └── urls.py                   # /student/login/, /signup/, /feedback/, /sheets/, /subjects/
+│   ├── UploadQP/                     # Question paper ingestion
+│   │   ├── views.py                  # upload_question_paper_json()
+│   │   └── urls.py                   # POST /upload/upload_qp_json/
+│   ├── Textbooks/                    # FAISS artifact storage (not a Django app)
+│   │   ├── *.pdf
+│   │   ├── *_index.faiss
+│   │   └── *_meta.pkl
+│   └── venv/                         # Python virtual environment (git-ignored)
 │
 └── Frontend/
-    ├── TeacherFrontend/        # Teacher-facing React app (port 5173)
+    ├── TeacherFrontend/              # Teacher React app (port 5173)
     │   ├── src/
+    │   │   ├── pages/
+    │   │   │   ├── UploadQuestionPage.tsx   # Route: /
+    │   │   │   ├── UploadAnswerPage.tsx     # Route: /upload_answer
+    │   │   │   └── UploadTextbookPage.tsx   # Route: /upload_textbook
+    │   │   └── components/
+    │   │       ├── Header.tsx
+    │   │       ├── Button.tsx
+    │   │       ├── FileUpload.tsx
+    │   │       ├── QuestionItem.tsx
+    │   │       └── ResultCard.tsx
     │   ├── vite.config.ts
     │   └── package.json
-    └── StudentFrontend/        # Student-facing React app (port 5174)
+    └── StudentFrontend/              # Student React app (port 5174)
         ├── src/
+        │   ├── pages/
+        │   │   ├── Login.tsx           # Route: /login
+        │   │   ├── Register.tsx        # Route: /register
+        │   │   ├── Dashboard.tsx       # Route: /dashboard (protected)
+        │   │   └── SubjectDetail.tsx   # Route: /subject/:subject (protected)
+        │   ├── components/
+        │   │   ├── Layout.tsx
+        │   │   ├── Navbar.tsx
+        │   │   ├── ProtectedRoute.tsx
+        │   │   └── LoadingSpinner.tsx
+        │   ├── contexts/
+        │   │   └── AuthContext.tsx     # USN-based auth state (localStorage)
+        │   └── services/
+        │       └── api.ts             # Axios client for /student/* endpoints
         ├── vite.config.ts
         └── package.json
 ```
@@ -129,7 +168,7 @@ Before you begin, ensure the following are installed on your system:
 | **MongoDB** | 6.0+ | Running locally on `mongodb://localhost:27017` — [mongodb.com](https://www.mongodb.com/try/download/community) |
 | **Groq API Key** | — | Free at [console.groq.com](https://console.groq.com) |
 
-> **Windows note:** The provided `.bat` scripts require **CMD / PowerShell on Windows**. For Linux/macOS, the same steps can be run manually (see below).
+> **Windows note:** The provided `.bat` scripts require **CMD / PowerShell on Windows**. For Linux/macOS, run the steps manually (see below).
 
 ---
 
@@ -153,7 +192,7 @@ Then open `.env` and fill in your values.
 |---|---|---|---|
 | `SECRET_KEY` | ✅ Yes | — | Django secret key for cryptographic signing. Generate with: `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"` |
 | `DEBUG` | No | `True` | Set to `False` in production to disable debug pages |
-| `GROQ_API_KEY` | ✅ Yes | — | Your Groq API key — used by the Django backend for OCR and grading. Get one free at [console.groq.com](https://console.groq.com) |
+| `GROQ_API_KEY` | ✅ Yes | — | Groq API key — used by the Django backend for OCR and grading. Get one free at [console.groq.com](https://console.groq.com) |
 | `VITE_GROQ_API_KEY` | ✅ Yes | — | Same Groq key exposed to the Teacher Vite frontend. Must be prefixed with `VITE_` for Vite to bundle it |
 | `MONGO_URI` | No | `mongodb://localhost:27017` | MongoDB connection string. For Atlas: `mongodb+srv://<user>:<pass>@cluster.mongodb.net/<db>` |
 | `OTHER_DJANGO_APP_URL` | No | `http://127.0.0.1:8000/evaluate/script/` | Internal URL for the evaluate endpoint. Only change if Django runs on a different port |
@@ -266,14 +305,41 @@ npm run dev
 
 All API endpoints are served by the Django backend at `http://127.0.0.1:8000`.
 
-| Method | Endpoint | Module | Description |
-|---|---|---|---|
-| `POST` | `/upload/` | UploadQP | Upload a question paper (PDF or image) |
-| `POST` | `/evaluate/script/` | Evaluate | Submit and evaluate a student answer script |
-| `POST` | `/imageto/` | ImagetoText | Convert an answer sheet image to text (OCR) |
-| `GET/POST` | `/student/feedback/` | Student | Retrieve or save student feedback |
-| `POST` | `/rag/` | RagPipe | Query the RAG pipeline for context retrieval |
-| `GET` | `/admin/` | Django Admin | Built-in Django admin panel |
+### UploadQP
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/upload/upload_qp_json/` | Upload a question paper as structured JSON. Fields: `questions` (JSON list), `exam_type`, `subject`. Optional per-question: `diagram_marks` + `image_<qno>` file. Upserts one document per subject/exam_type in MongoDB. |
+
+### ImagetoText
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/imageto/text/` | Full end-to-end pipeline trigger. Accepts answer sheet images, runs OCR via Groq vision, calls the RAG context lookup and grading engine, and saves results to MongoDB. |
+
+### Evaluate
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/evaluate/script/` | Grades a list of questions with student answers. Used internally by `ImagetoText`. Supports model chain fallback and rate-limit retry. |
+
+### RagPipe
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/rag/pipeline/` | Upload and index a PDF textbook. Chunks text, generates embeddings with `all-MiniLM-L6-v2`, and saves a FAISS index + metadata pickle to `Backend/Textbooks/`. |
+| `POST` | `/rag/search/` | Similarity search — retrieve top-k relevant chunks from a FAISS index for a query string. |
+| `GET` | `/rag/textbook/` | Serve a stored textbook PDF file for preview. |
+
+### Student
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/student/signup/` | Register a new student. Body: `{ usn, password }`. USN must match format `YYETDDnnnrrr`. Password is hashed with bcrypt. |
+| `POST` | `/student/login/` | Authenticate a student. Body: `{ usn, password }`. Returns success on valid credentials. |
+| `POST` | `/student/subjects/` | Get list of subjects with graded results for a USN. Body: `{ usn }`. |
+| `GET/POST` | `/student/feedback/` | Retrieve or save per-student feedback and marks. Query params (GET): `usn`, `subject`, `exam_type`. |
+| `GET` | `/student/sheets/` | Retrieve stored answer sheet images for a student. Query params: `usn`, `subject`, `exam_type`. |
+
+### Django Admin
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/admin/` | Built-in Django admin panel |
 
 ---
 
@@ -281,13 +347,13 @@ All API endpoints are served by the Django backend at `http://127.0.0.1:8000`.
 
 | Module | Path | Purpose |
 |---|---|---|
-| **Grader** | `Backend/Grader/` | Django project core — settings, root URLs, WSGI/ASGI |
-| **UploadQP** | `Backend/UploadQP/` | Handles question paper uploads; parses PDFs and stores content |
-| **ImagetoText** | `Backend/ImagetoText/` | Converts uploaded answer sheet images to text using Groq's vision LLM |
-| **RagPipe** | `Backend/RagPipe/` | RAG pipeline — embeds text with `sentence-transformers`, indexes with FAISS, retrieves relevant context |
-| **Evaluate** | `Backend/Evaluate/` | Core grading logic — compares student answers against model answers via Groq LLM |
-| **Student** | `Backend/Student/` | Stores and retrieves per-student feedback in MongoDB |
-| **Textbooks** | `Backend/Textbooks/` | Stores reference/textbook material used to augment grading context |
+| **Grader** | `Backend/Grader/` | Django project core — settings (env loading, CORS, upload limits), root URL config, WSGI/ASGI |
+| **UploadQP** | `Backend/UploadQP/` | Accepts JSON-structured question papers with optional per-question reference diagram images. Upserts into MongoDB `QuestionPaper` collection. |
+| **ImagetoText** | `Backend/ImagetoText/` | End-to-end pipeline: OCR via Groq vision LLM → RAG context fetch → AI grading → save feedback. Orchestrates all other modules directly (no HTTP round-trips). |
+| **RagPipe** | `Backend/RagPipe/` | PDF → chunked text → `all-MiniLM-L6-v2` embeddings → FAISS IndexFlatIP. Provides `get_rag_context()` for use by the grading engine. Chunks below a relevance threshold (`0.30`) are discarded. |
+| **Evaluate** | `Backend/Evaluate/` | Core grading logic. Uses a Groq LLM chain (`llama-3.3-70b` → `llama-3.1-8b` on rate-limit). Detects diagram-only questions, injects RAG context (up to 4,000 chars), and handles 429 retry with parsed back-off. |
+| **Student** | `Backend/Student/` | Handles student registration/login (bcrypt), feedback storage, answer sheet retrieval, and subject listing. Uses MongoDB `students` and `Login` collections with compound indexes. |
+| **Textbooks** | `Backend/Textbooks/` | Static artifact directory (not a Django app). Stores raw PDF files alongside their FAISS index (`*_index.faiss`) and metadata pickle (`*_meta.pkl`) generated by RagPipe. |
 
 ---
 
@@ -295,23 +361,30 @@ All API endpoints are served by the Django backend at `http://127.0.0.1:8000`.
 
 ### Teacher Frontend (`Frontend/TeacherFrontend`) — Port 5173
 
-The teacher-facing interface where educators can:
-- Upload question papers (PDF / image)
-- Monitor grading jobs in real time
-- Browse per-student evaluation results and scores
-- Download grading reports
+The teacher-facing interface with three pages:
+
+| Route | Page | What it does |
+|---|---|---|
+| `/` | **Upload Question Paper** | Define a question paper: add questions with text, marks, and optional diagram marks + reference image. Submit to `/upload/upload_qp_json/`. |
+| `/upload_answer` | **Upload Answer Sheets** | Upload scanned/photographed student answer sheet images. Triggers the full OCR → grading → feedback pipeline via `/imageto/text/`. |
+| `/upload_textbook` | **Upload Textbook** | Upload a PDF textbook to build a RAG index via `/rag/pipeline/`. Manage multiple indexed textbooks; set one as active for grading context. |
 
 Built with **React + TypeScript + Vite + Tailwind CSS**.  
-Uses `VITE_GROQ_API_KEY` from `.env` for any direct AI calls.
+Uses `VITE_GROQ_API_KEY` from `.env` for any direct Groq calls.
 
 ### Student Frontend (`Frontend/StudentFrontend`) — Port 5174
 
-The student-facing portal where students can:
-- Submit their handwritten or typed answer sheets
-- View AI-generated feedback on their submissions
-- Track marks and improvement suggestions
+The student-facing portal with authentication and results viewing:
 
-Built with **React + TypeScript + Vite + Tailwind CSS + Axios**.
+| Route | Page | What it does |
+|---|---|---|
+| `/login` | **Login** | USN + password login. Stores USN in `localStorage` via `AuthContext`. Redirects to dashboard on success. |
+| `/register` | **Register** | New student registration with USN and password. |
+| `/dashboard` | **Dashboard** *(protected)* | Shows all subjects/exam types for which the logged-in student has graded results. |
+| `/subject/:subject` | **Subject Detail** *(protected)* | Displays per-question feedback, marks scored vs. total, and answer sheet images for a specific subject and exam type. |
+
+Built with **React + TypeScript + Vite + Tailwind CSS + Axios**.  
+Auth state is managed via `AuthContext` (USN persisted in `localStorage`). All `/dashboard` and `/subject/*` routes are protected by `ProtectedRoute`.
 
 ---
 
@@ -329,6 +402,8 @@ Built with **React + TypeScript + Vite + Tailwind CSS + Axios**.
 - Backend CORS is currently open (`CORS_ALLOW_ALL_ORIGINS = True`) — restrict `ALLOWED_HOSTS` and CORS origins before deploying to production.
 - Set `DEBUG=False` and rotate `SECRET_KEY` before any public deployment.
 - Max upload size is **50 MB** (configurable via `DATA_UPLOAD_MAX_MEMORY_SIZE` in `settings.py`).
+- USN format is validated server-side against the pattern `YYETDDnnnrrr` (e.g. `22ETIS411050`).
+- The Groq vision model chain is currently `["meta-llama/llama-4-scout-17b-16e-instruct"]`; the text grading chain falls back from `llama-3.3-70b-versatile` → `llama-3.1-8b-instant` on rate-limit (429).
 
 ---
 
